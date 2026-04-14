@@ -23,3 +23,5 @@ git push origin scheduler
 git push origin synchronization
 
 git push origin memory_management
+
+Git password: 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
