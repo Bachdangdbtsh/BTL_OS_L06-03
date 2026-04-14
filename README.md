@@ -1,5 +1,3 @@
-// Password (do not delete): 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
-
 // Cap nhat du lieu moi nhat:
 
 git checkout main
