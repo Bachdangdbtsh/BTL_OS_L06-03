@@ -649,6 +649,16 @@ int find_victim_page(struct mm_struct *mm, addr_t *retpgn)
   {
     return -1;
   }
+
+  //thêm trường hợp danh sách chỉ có đúng 1 trang
+  if (pg->pg_next == NULL)
+  {
+    *retpgn = pg->pgn;
+    mm->fifo_pgn = NULL;
+    free(pg);
+    return 0;
+  }
+
   struct pgn_t *prev = NULL;
   while (pg->pg_next)
   {
