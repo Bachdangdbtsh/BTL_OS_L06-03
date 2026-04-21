@@ -135,6 +135,7 @@ int validate_overlap_vm_area(struct pcb_t *caller, int vmaid, addr_t vmastart, a
 int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz)
 {
   //struct vm_rg_struct * newrg = malloc(sizeof(struct vm_rg_struct));
+  struct vm_rg_struct *newrg = malloc(sizeof(struct vm_rg_struct));
 
   /* TOTO with new address scheme, the size need tobe aligned 
    *      the raw inc_sz maybe not fit pagesize
@@ -142,6 +143,16 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz)
   //addr_t inc_amt;
 
 //  int incnumpage =  inc_amt / PAGING_PAGESZ;
+  addr_t inc_amt;
+  int incnumpage;
+#ifdef MM64
+  inc_amt = PAGING64_PAGE_ALIGNSZ(inc_sz);
+  incnumpage = inc_amt / PAGING64_PAGESZ;
+#else
+  inc_amt = PAGING_PAGE_ALIGNSZ(inc_sz);
+  incnumpage = inc_amt / PAGING_PAGESZ;
+#endif
+
 
   /* TODO Validate overlap of obtained region */
   //if (validate_overlap_vm_area(caller, vmaid, area->rg_start, area->rg_end) < 0)
@@ -152,10 +163,37 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz)
   // inc_limit_ret...
   /* The obtained vm area (only)
    * now will be alloc real ram region */
+  struct vm_area_struct *cur_vma = get_vma_by_num(caller->krnl->mm, vmaid);
+  if (cur_vma == NULL) {
+    free(newrg);
+    return -1;
+  }
+
+  addr_t old_end = cur_vma->sbrk;
+  addr_t new_end = old_end + inc_amt;
+
+  if (validate_overlap_vm_area(caller, vmaid, old_end, new_end) < 0) {
+    free(newrg);
+    return -1; // lỗi do overlap vùng nhớ
+  }
+
+  addr_t old_vm_end = cur_vma->vm_end; 
+  cur_vma->sbrk = new_end;
+  if (new_end > cur_vma->vm_end) {
+    cur_vma->vm_end = new_end;
+  }
 
 //  if (vm_map_ram(caller, area->rg_start, area->rg_end, 
 //                   old_end, incnumpage , newrg) < 0)
 //    return -1; /* Map the memory to MEMRAM */
+  if (vm_map_ram(caller, old_end, new_end, old_end, incnumpage, newrg) < 0) {
+    cur_vma->sbrk = old_end;
+    cur_vma->vm_end = old_vm_end; 
+    free(newrg);
+    return -1; 
+  }
+
+  free(newrg);
 
   return 0;
 }
