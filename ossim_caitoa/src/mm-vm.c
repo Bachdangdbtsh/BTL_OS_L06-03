@@ -20,6 +20,9 @@
 #include <stdio.h>
 #include <pthread.h>
 
+// khởi tạo Mutex Lock để bảo vệ cấu trúc VMA
+static pthread_mutex_t vma_lock = PTHREAD_MUTEX_INITIALIZER;
+
 /*get_vma_by_num - get vm area by numID
  *@mm: memory region
  *@vmaid: ID vm area to alloc memory region
@@ -153,6 +156,8 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz)
   incnumpage = inc_amt / PAGING_PAGESZ;
 #endif
 
+  //bắt đầu Critical Section
+  pthread_mutex_lock(&vma_lock);
 
   /* TODO Validate overlap of obtained region */
   //if (validate_overlap_vm_area(caller, vmaid, area->rg_start, area->rg_end) < 0)
@@ -165,6 +170,7 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz)
    * now will be alloc real ram region */
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->krnl->mm, vmaid);
   if (cur_vma == NULL) {
+    pthread_mutex_unlock(&vma_lock);
     free(newrg);
     return -1;
   }
@@ -173,6 +179,7 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz)
   addr_t new_end = old_end + inc_amt;
 
   if (validate_overlap_vm_area(caller, vmaid, old_end, new_end) < 0) {
+    pthread_mutex_unlock(&vma_lock);
     free(newrg);
     return -1; // lỗi do overlap vùng nhớ
   }
@@ -189,10 +196,12 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz)
   if (vm_map_ram(caller, old_end, new_end, old_end, incnumpage, newrg) < 0) {
     cur_vma->sbrk = old_end;
     cur_vma->vm_end = old_vm_end; 
+    pthread_mutex_unlock(&vma_lock);
     free(newrg);
     return -1; 
   }
 
+  pthread_mutex_unlock(&vma_lock);
   free(newrg);
 
   return 0;
