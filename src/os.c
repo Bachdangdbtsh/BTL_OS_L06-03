@@ -153,6 +153,9 @@ static void * ld_routine(void * args) {
 	*/
 		proc->mm = malloc(sizeof(struct mm_struct));
 		init_mm(proc->mm, proc);
+		proc->mram = mram;
+		proc->mswp = mswp;
+		proc->active_mswp = active_mswp;
 		krnl->mm =proc->mm; // trỏ vào mm của process cuối cùng được load
 		krnl->mram = mram;
 		krnl->mswp = mswp;
