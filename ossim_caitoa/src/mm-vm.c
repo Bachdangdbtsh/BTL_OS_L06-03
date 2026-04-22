@@ -30,22 +30,29 @@ static pthread_mutex_t vma_lock = PTHREAD_MUTEX_INITIALIZER;
  */
 struct vm_area_struct *get_vma_by_num(struct mm_struct *mm, int vmaid)
 {
+  if (mm == NULL) return NULL;
   struct vm_area_struct *pvma = mm->mmap;
 
   if (mm->mmap == NULL)
     return NULL;
 
-  int vmait = pvma->vm_id;
+  // int vmait = pvma->vm_id;
 
-  while (vmait < vmaid)
-  {
-    if (pvma == NULL)
-      return NULL;
+  // while (vmait < vmaid)
+  // {
+  //   if (pvma == NULL)
+  //     return NULL;
 
-    pvma = pvma->vm_next;
-    vmait = pvma->vm_id;
+  //   pvma = pvma->vm_next;
+  //   vmait = pvma->vm_id;
+  // }
+  while (pvma != NULL) {
+    if (pvma->vm_id == vmaid) {
+      return pvma;
+    }
+    pvma = pvma->vm_next;    
   }
-
+  
   return pvma;
 }
 
