@@ -59,6 +59,16 @@ int init_pte(addr_t *pte,
 }
 
 
+static addr_t* get_or_create_new_table (addr_t* parent_table, int index) {
+  if (parent_table[index] == 0 ) { // nếu cần truy cập vào bảng con mà chưa có
+    addr_t* new_table = (addr_t*) malloc(512 * sizeof(addr_t));
+    memset(new_table,0, 512* sizeof(512 * new_table));
+    parent_table[index] = (addr_t) new_table; // ép kiểu địa chỉ về thành addr và lưu lại
+  }
+  return (addr_t*) parent_table[index];
+}
+
+
 /*
  * get_pd_from_pagenum - Parse address to 5 page directory level
  * @pgn   : pagenumer
@@ -115,8 +125,6 @@ int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff)
   addr_t pud=0;
   addr_t pmd=0;
   addr_t pt=0;
-	
-  // dummy pte alloc to avoid runtime error
   
 #ifdef MM64	
   /* Get value from the system */
@@ -125,8 +133,12 @@ int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff)
   //... krnl->mm->pgd
   //... krnl->mm->pt
   //pte = &krnl->mm->pt;
-  if (caller != NULL && caller->mm != NULL && caller->mm->pt != NULL) {
-      pte = &caller->mm->pt[pt];
+  if (caller != NULL && caller->mm != NULL ) {
+    addr_t* p4d_table = get_or_create_new_table(caller->mm->pgd,pgd);
+    addr_t* pud_table = get_or_create_new_table(p4d_table, p4d);
+    addr_t* pmd_table = get_or_create_new_table(pud_table,pud);
+    addr_t* pt_table  = get_or_create_new_table(pmd_table,pmd);
+    pte = &pt_table[pt];
   } else {
       return -1; 
   }
@@ -173,8 +185,12 @@ int pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn)
   //... krnl->mm->pt
   //pte = &krnl->mm->pt;
   // nhớ bật MM_PAGING
-  if (caller !=NULL && caller->mm !=NULL && caller->mm->pt !=NULL) {
-    pte = & caller->mm->pt[pt];
+  if (caller !=NULL && caller->mm !=NULL) {
+    addr_t* p4d_table = get_or_create_new_table(caller->mm->pgd,pgd);
+    addr_t* pud_table = get_or_create_new_table(p4d_table, p4d);
+    addr_t* pmd_table = get_or_create_new_table(pud_table,pud);
+    addr_t* pt_table  = get_or_create_new_table(pmd_table,pmd);
+    pte = & pt_table[pt];
   }
   else return -1; 
 #else
@@ -214,10 +230,18 @@ uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn)
   //... krnl->mm->pt
   //pte = &krnl->mm->pt;	
   // nhớ bật MM_PAGING khi chạy hàm
-	if (caller != NULL && caller->mm !=NULL && caller->mm->pt !=NULL) {
-    pte= (uint32_t) caller->mm->pt[pt];
+	if (caller != NULL && caller->mm !=NULL && caller->mm->pgd != NULL) {
+    if(caller->mm->pgd[pgd] == 0) return 0; // nếu bảng con chưa được tạo thì trả về 0
+    addr_t* p4d_table = (addr_t*) caller->mm->pgd[pgd];
+    if(p4d_table[p4d] == 0) return 0;
+    addr_t* pud_table = (addr_t*) p4d_table[p4d];
+    if(pud_table[pud] == 0) return 0;
+    addr_t* pmd_table = (addr_t*) pud_table[pud];
+    if(pmd_table[pmd] == 0) return 0;
+    addr_t* pt_table  = (addr_t*) pmd_table[pmd];
+    return (uint32_t) pt_table[pt];
   }
-  return pte;
+  return 0;
 }
 
 /* Set PTE page table entry
@@ -232,8 +256,15 @@ int pte_set_entry(struct pcb_t *caller, addr_t pgn, uint32_t pte_val)
 	*/
   addr_t pgd=0, p4d=0, pud=0, pmd=0, pt=0;
   get_pd_from_pagenum(pgn, &pgd, &p4d, &pud, &pmd, &pt);
-  caller->mm->pt[pt] = (addr_t)pte_val;
-	return 0;
+  if (caller != NULL && caller->mm !=NULL) {
+    addr_t* p4d_table = get_or_create_new_table(caller->mm->pgd,pgd);
+    addr_t* pud_table = get_or_create_new_table(p4d_table, p4d);
+    addr_t* pmd_table = get_or_create_new_table(pud_table,pud);
+    addr_t* pt_table  = get_or_create_new_table(pmd_table,pmd);
+    pt_table[pt] = (addr_t) pte_val;
+    return 0;
+  }
+	return -1;
 }
 
 
@@ -246,10 +277,15 @@ int vmap_pgd_memset(struct pcb_t *caller,           // process call
 {
   //int pgit = 0;
   //uint64_t pattern = 0xdeadbeef;
-
+  uint32_t pattern = 0xdeadbeef; // khởi tạo pattern ban đầu
+  addr_t pgn = addr >> PAGING64_ADDR_PT_SHIFT; // lấy số trang page number của địa chỉ bắt đầu
   /* TODO memset the page table with given pattern
    */
-
+  pthread_mutex_lock(&caller->mm->mm_lock);
+  for (int pgit =0; pgit < pgnum; pgit ++) {
+    pte_set_entry(caller, pgn + pgit, pattern);
+  }
+  pthread_mutex_unlock(&caller->mm->mm_lock);
   return 0;
 }
 
@@ -428,7 +464,9 @@ int __swap_cp_page(struct memphy_struct *mpsrc, addr_t srcfpn,
 {
   int cellidx;
   addr_t addrsrc, addrdst;
-  /* Bật khóa bảo vệ cho cả thiết bị nguồn và thiết bị đích */
+
+  /* Bật khóa bảo vệ cho cả thiết bị nguồn và thiết bị đích, sửa đổi
+   */ 
   if ((uintptr_t)mpsrc < (uintptr_t)mpdst) {
     pthread_mutex_lock(&mpsrc->memphy_lock);
     pthread_mutex_lock(&mpdst->memphy_lock);
@@ -477,17 +515,9 @@ int init_mm(struct mm_struct *mm, struct pcb_t *caller)
    //mm->pmd = ...
    //mm->pt = ...
 
-  /* khởi tạo mỗi page gồm 512 pte (4KB) 32 bit, cấu tạo mỗi pte đọc spec*, memset giá trị = 0 tránh giá trị rác */
+  /* khởi tạo bắt đầu các cấp page directory, nhớ bật MM_PAGING khi chạy hàm này */
   mm->pgd = malloc(512 * sizeof(addr_t));
   memset(mm->pgd,0, 512 * sizeof(addr_t));
-  mm->p4d = malloc(512 * sizeof(addr_t));
-  memset(mm->p4d,0, 512 * sizeof(addr_t));
-  mm->pud = malloc(512 * sizeof(addr_t));
-  memset(mm->pud,0, 512 * sizeof(addr_t));
-  mm->pmd = malloc(512 * sizeof(addr_t));
-  memset(mm->pmd,0, 512 * sizeof(addr_t));
-  mm->pt  = malloc(512 * sizeof(addr_t));
-  memset(mm->pt,0, 512 * sizeof(addr_t)); 
   /* By default the owner comes with at least one vma */
   vma0->vm_id = 0;  
   vma0->vm_start = 0;
@@ -625,7 +655,20 @@ int print_pgtbl(struct pcb_t *caller, addr_t start, addr_t end)
   get_pd_from_address(start, &pgd, &p4d, &pud, &pmd, &pt);
 
   /* TODO traverse the page map and dump the page directory entries */
-
+  if (caller != NULL && caller->mm != NULL) {
+    addr_t *pgd_table = caller->mm->pgd;
+    addr_t *p4d_table = (pgd_table != NULL && pgd_table[pgd] != 0) ? 
+                        (addr_t*)pgd_table[pgd] : NULL;
+    addr_t *pud_table = (p4d_table != NULL && p4d_table[p4d] != 0) ? 
+                        (addr_t*)p4d_table[p4d] : NULL;         
+    addr_t *pmd_table = (pud_table != NULL && pud_table[pud] != 0) ? 
+                        (addr_t*)pud_table[pud] : NULL;
+    printf(" PDG=%p P4g=%p PUD=%p PMD=%p\n",
+           (void*)pgd_table,
+           (void*)p4d_table,
+           (void*)pud_table,
+           (void*)pmd_table); 
+  }
   return 0;
 }
 
