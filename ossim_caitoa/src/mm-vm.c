@@ -75,11 +75,27 @@ struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, ad
   // newrg->rg_start = ...
   // newrg->rg_end = ...
   */
-  struct vm_area_struct *cur_vma = get_vma_by_num(caller->krnl->mm, vmaid);
+  struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
+  if (cur_vma == NULL) {
+    return NULL;
+  }
 
   newrg = malloc(sizeof(struct vm_rg_struct));
+  if (newrg == NULL) {
+    return NULL; 
+  }
+
   newrg->rg_start = cur_vma->sbrk;
-  newrg->rg_end = newrg->rg_start + size;
+  //newrg->rg_end = newrg->rg_start + size;
+#ifdef MM64
+  newrg->rg_end = newrg->rg_start + PAGING64_PAGE_ALIGNSZ(size);
+#else
+  newrg->rg_end = newrg->rg_start + PAGING_PAGE_ALIGNSZ(size);
+#endif
+
+  newrg->vmaid = vmaid;
+  newrg->rg_next = NULL;
+
   /* END TODO */
 
   return newrg;
