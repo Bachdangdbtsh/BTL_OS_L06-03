@@ -57,16 +57,41 @@ void init_scheduler(void) {
  *  State representation   prio = 0 .. MAX_PRIO, curr_slot = 0..(MAX_PRIO - prio)
  */
 struct pcb_t * get_mlq_proc(void) {
-	struct pcb_t * proc = NULL;
+    struct pcb_t * proc = NULL;
+    pthread_mutex_lock(&queue_lock);
 
-	pthread_mutex_lock(&queue_lock);
-	/*TODO: get a process from PRIORITY [ready_queue].
-	 *      It worth to protect by a mechanism.
-	 * */
+    int all_slot_zero = 1;
+    for (int i = 0; i < MAX_PRIO; i++) {
+        if (slot[i] > 0) {
+            all_slot_zero = 0;
+            if (!empty(&mlq_ready_queue[i])) {
+                proc = dequeue(&mlq_ready_queue[i]);
+                slot[i]--;               
+                goto found;
+            }
+        }
+    }
 
-	if (proc != NULL)
-		enqueue(&running_list, proc);
-	return proc;	
+    if (all_slot_zero) {
+        for (int i = 0; i < MAX_PRIO; i++) 
+            slot[i] = MAX_PRIO - i;
+            
+        for (int i = 0; i < MAX_PRIO; i++) {
+            if (!empty(&mlq_ready_queue[i])) {
+                proc = dequeue(&mlq_ready_queue[i]);
+                slot[i]--;
+                
+                printf("\t[DEBUG] Post-Reset: Picked PID %d from PRIO %d. New slot: %d\n", 
+                        proc->pid, i, slot[i]);
+                break;
+            }
+        }
+    }
+
+found:
+    if (proc != NULL) enqueue(&running_list, proc);
+    pthread_mutex_unlock(&queue_lock);
+    return proc;
 }
 
 void put_mlq_proc(struct pcb_t * proc) {
@@ -80,6 +105,9 @@ void put_mlq_proc(struct pcb_t * proc) {
 	 */
 
 	pthread_mutex_lock(&queue_lock);
+
+    purgequeue(&running_list, proc);
+
 	enqueue(&mlq_ready_queue[proc->prio], proc);
 	pthread_mutex_unlock(&queue_lock);
 }
@@ -119,6 +147,9 @@ struct pcb_t * get_proc(void) {
 	 *       It worth to protect by a mechanism.
 	 * 
 	 */
+
+
+
 
 	pthread_mutex_unlock(&queue_lock);
 
