@@ -11,7 +11,7 @@
 #include "common.h"
 
 
-struct sc_regs {
+typedef struct sc_regs {
         arg_t a1;
         arg_t a2;
         arg_t a3;
@@ -28,7 +28,7 @@ struct sc_regs {
         uint32_t orig_ax;
 
         int32_t flags;
-};
+} sc_regs;
 
 
 /* This is used purely for kernel trace the table of system call */

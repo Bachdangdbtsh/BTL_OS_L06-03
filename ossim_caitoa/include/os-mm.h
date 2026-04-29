@@ -84,14 +84,19 @@ struct vm_area_struct {
  * Kernel cache pool struct
  */
 struct kcache_pool_struct {
+   // optional: add pool_id for management
+   int pool_id;
    int size;
    int align;
+   // add *next to become linked list
+   
 
 #ifdef MM64
    addr_t storage;
 #else
    uint32_t storage;
 #endif
+   struct kcache_pool_struct *next;
 };
 
 

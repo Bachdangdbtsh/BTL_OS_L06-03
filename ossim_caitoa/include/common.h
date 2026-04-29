@@ -36,6 +36,7 @@
 
 typedef ARG_TYPE arg_t;
 
+
 /* 
  * @bksysnet: the format string need to be redefined
  *            based on the address mode
@@ -110,10 +111,13 @@ struct pcb_t
 	struct code_seg_t *code; // Code segment
 	addr_t regs[10];	 // Registers, store address of allocated regions
 	uint32_t pc;		 // Program pointer, point to the next instruction
-#ifdef MLQ_SCHED
+#ifdef MM_PAGING
 	// Priority on execution (if supported), on-fly aka. changeable
 	// and this vale overwrites the default priority when it existed
-	uint32_t prio;
+	struct mm_struct *mm;
+	struct memphy_struct *mram;
+	struct memphy_struct **mswp;
+	struct memphy_struct *active_mswp;
 #endif
 	struct krnl_t *krnl;	
 	struct page_table_t *page_table; // Page table
