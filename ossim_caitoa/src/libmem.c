@@ -1141,20 +1141,21 @@ int find_victim_page(struct mm_struct *mm, addr_t *retpgn)
   struct pgn_t *pg = mm->fifo_pgn;
 
   /* TODO: Implement the theorical mechanism to find the victim page */
-
-  if (pg == NULL) {
+  if (!pg)
+  {
     return -1;
   }
 
-  if (pg->pg_next == NULL) {
-    return -1;
+  //thêm trường hợp danh sách chỉ có đúng 1 trang
+  if (pg->pg_next == NULL)
+  {
+    *retpgn = pg->pgn;
+    mm->fifo_pgn = NULL;
+    free(pg);
+    return 0;
   }
-    
+
   struct pgn_t *prev = NULL;
-  // check if 1 node exists only
-  // if (prev->pg_next == NULL) {
-  //   return -1;
-  // }
   while (pg->pg_next)
   {
     prev = pg;
