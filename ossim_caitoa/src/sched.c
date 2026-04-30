@@ -60,36 +60,38 @@ struct pcb_t * get_mlq_proc(void) {
     struct pcb_t * proc = NULL;
     pthread_mutex_lock(&queue_lock);
 
-    int all_slot_zero = 1;
+    int has_process = 0;
+    //Tim queqe con process va con slot theo muc uu tien
     for (int i = 0; i < MAX_PRIO; i++) {
-        if (slot[i] > 0) {
-            all_slot_zero = 0;
-            if (!empty(&mlq_ready_queue[i])) {
-                proc = dequeue(&mlq_ready_queue[i]);
-                slot[i]--;               
-                goto found;
-            }
-        }
-    }
+        if (!empty(&mlq_ready_queue[i])) {
+            has_process = 1;
 
-    if (all_slot_zero) {
-        for (int i = 0; i < MAX_PRIO; i++) 
-            slot[i] = MAX_PRIO - i;
-            
-        for (int i = 0; i < MAX_PRIO; i++) {
-            if (!empty(&mlq_ready_queue[i])) {
+            if (slot[i] > 0) {
                 proc = dequeue(&mlq_ready_queue[i]);
                 slot[i]--;
-                
-                printf("\t[DEBUG] Post-Reset: Picked PID %d from PRIO %d. New slot: %d\n", 
-                        proc->pid, i, slot[i]);
                 break;
             }
         }
     }
 
-found:
-    if (proc != NULL) enqueue(&running_list, proc);
+    // Con Process het slot (Reset slot) va lay process
+    if (proc == NULL && has_process) {
+        for (int i = 0; i < MAX_PRIO; i++) {
+            slot[i] = MAX_PRIO - i;
+        }
+
+        for (int i = 0; i < MAX_PRIO; i++) {
+            if (!empty(&mlq_ready_queue[i]) && slot[i] > 0) {
+                proc = dequeue(&mlq_ready_queue[i]);
+                slot[i]--;
+                break;
+            }
+        }
+    }
+
+    if (proc != NULL)
+        enqueue(&running_list, proc);
+
     pthread_mutex_unlock(&queue_lock);
     return proc;
 }
