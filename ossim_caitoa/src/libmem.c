@@ -416,18 +416,27 @@ int pg_setval(struct mm_struct *mm, int addr, BYTE value, struct pcb_t *caller)
  */
 int __read(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, BYTE *data)
 {
+  // add mutex here
+  pthread_mutex_lock(&mmvm_lock);
+
   struct pcb_t *real_pcb = get_pcb_by_pid(caller->krnl, caller->pid);
-  if (real_pcb == NULL) return -1;
+  if (real_pcb == NULL) {
+    pthread_mutex_unlock(&mmvm_lock);   // Unlock before returning -1
+    return -1;
+  }
 
   struct vm_rg_struct *currg  = get_symrg_byid(real_pcb->mm, rgid);
   struct vm_area_struct *cur_vma = get_vma_by_num(real_pcb->mm, vmaid);
 
-  /* TODO Invalid memory identify */
-  if (currg == NULL || cur_vma == NULL) return -1;
-  if (currg->rg_start == 0 && currg->rg_end == 0) return -1;
-  if (currg->rg_start + offset >= currg->rg_end) return -1;
+  if (currg == NULL || cur_vma == NULL || (currg->rg_start == 0 && currg->rg_end == 0) 
+        || currg->rg_start + offset >= currg->rg_end) {
+    pthread_mutex_unlock(&mmvm_lock);   // Unlock before returning -1
+    return -1;
+  }
 
-  return pg_getval(real_pcb->mm, currg->rg_start + offset, data, caller);
+  int result = pg_getval(real_pcb->mm, currg->rg_start + offset, data, caller);
+  pthread_mutex_unlock(&mmvm_lock);   
+  return result;
 
   // return 0;
 }
@@ -833,6 +842,7 @@ int libkmem_copy_from_user(struct pcb_t *caller, uint32_t source, uint32_t desti
 {
   /* TODO: provide OS level management kmem
    */
+  // pthread_mutex_unlock(&mmvm_lock);
   struct pcb_t *real_pcb = get_pcb_by_pid(caller->krnl, caller->pid);
   if (real_pcb == NULL) return -1;
   /* --- Validate source (user region) --- */
@@ -855,6 +865,7 @@ int libkmem_copy_from_user(struct pcb_t *caller, uint32_t source, uint32_t desti
   if ((addr_t)size > dst_rg->rg_end - dst_rg->rg_start) return -1;
 
   /* --- Copy byte by byte: user -> kernel --- */
+  pthread_mutex_lock(&mmvm_lock);
   uint32_t i;
   for (i = 0; i < size; i++) {
     BYTE byte;
@@ -871,6 +882,7 @@ int libkmem_copy_from_user(struct pcb_t *caller, uint32_t source, uint32_t desti
     }
   }
 
+  // pthread_mutex_unlock(&mmvm_lock);
   return 0;
 }
 
