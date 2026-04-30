@@ -68,7 +68,6 @@ struct pcb_t *purgequeue(struct queue_t *q, struct pcb_t *proc)
 
   q->proc[q->size - 1] = NULL;
   q->size--;
-
   
   return res;
 }

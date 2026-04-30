@@ -151,7 +151,6 @@ struct pcb_t * get_proc(void) {
 	 */
 
 
-
 	pthread_mutex_unlock(&queue_lock);
 
 	return proc;
