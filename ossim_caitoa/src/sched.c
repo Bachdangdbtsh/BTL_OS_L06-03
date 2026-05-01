@@ -141,48 +141,48 @@ void add_proc(struct pcb_t * proc) {
 	return add_mlq_proc(proc);
 }
 #else
-struct pcb_t * get_proc(void) {
-	struct pcb_t * proc = NULL;
+// struct pcb_t * get_proc(void) {
+// 	struct pcb_t * proc = NULL;
 
-	pthread_mutex_lock(&queue_lock);
-	/*TODO: get a process from [ready_queue].
-	 *       It worth to protect by a mechanism.
-	 * 
-	 */
+// 	pthread_mutex_lock(&queue_lock);
+// 	/*TODO: get a process from [ready_queue].
+// 	 *       It worth to protect by a mechanism.
+// 	 * 
+// 	 */
 
 
-	pthread_mutex_unlock(&queue_lock);
+// 	pthread_mutex_unlock(&queue_lock);
 
-	return proc;
-}
+// 	return proc;
+// }
 
-void put_proc(struct pcb_t * proc) {
-	proc->krnl->ready_queue = &ready_queue;
-	proc->krnl->running_list = &running_list;
+// void put_proc(struct pcb_t * proc) {
+// 	proc->krnl->ready_queue = &ready_queue;
+// 	proc->krnl->running_list = &running_list;
 
-	/* TODO: put running proc to running_list 
-	 *       It worth to protect by a mechanism.
-	 * 
-	 */
+// 	/* TODO: put running proc to running_list 
+// 	 *       It worth to protect by a mechanism.
+// 	 * 
+// 	 */
 
-	pthread_mutex_lock(&queue_lock);
-	enqueue(&run_queue, proc);
-	pthread_mutex_unlock(&queue_lock);
-}
+// 	pthread_mutex_lock(&queue_lock);
+// 	enqueue(&run_queue, proc);
+// 	pthread_mutex_unlock(&queue_lock);
+// }
 
-void add_proc(struct pcb_t * proc) {
-	proc->krnl->ready_queue = &ready_queue;
-	proc->krnl->running_list = &running_list;
+// void add_proc(struct pcb_t * proc) {
+// 	proc->krnl->ready_queue = &ready_queue;
+// 	proc->krnl->running_list = &running_list;
 
-	/* TODO: put running proc to running_list 
-	 *       It worth to protect by a mechanism.
-	 * 
-	 */
+// 	/* TODO: put running proc to running_list 
+// 	 *       It worth to protect by a mechanism.
+// 	 * 
+// 	 */
 
-	pthread_mutex_lock(&queue_lock);
-	enqueue(&ready_queue, proc);
-	pthread_mutex_unlock(&queue_lock);	
-}
+// 	pthread_mutex_lock(&queue_lock);
+// 	enqueue(&ready_queue, proc);
+// 	pthread_mutex_unlock(&queue_lock);	
+// }
 #endif
 
 
