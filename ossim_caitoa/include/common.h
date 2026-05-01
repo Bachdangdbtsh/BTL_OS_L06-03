@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <pthread.h>
 
 #ifndef OSCFG_H
 #include "os-cfg.h"
