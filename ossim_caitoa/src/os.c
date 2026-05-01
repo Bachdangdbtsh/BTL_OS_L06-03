@@ -140,14 +140,23 @@ static void * ld_routine(void * args) {
 		struct krnl_t * krnl = proc->krnl = &os;	
 
 #ifdef MLQ_SCHED
-		proc->priority = ld_processes.prio[i];
+		proc->prio = ld_processes.prio[i];
 #endif
 		while (current_time() < ld_processes.start_time[i]) {
 			next_slot(timer_id);
 		}
 #ifdef MM_PAGING
+	/* 
+		code ban đầu của thầy, gây memory leak mỗi lần ghi đè mm
 		krnl->mm = malloc(sizeof(struct mm_struct));
 		init_mm(krnl->mm, proc);
+	*/
+		proc->mm = malloc(sizeof(struct mm_struct));
+		init_mm(proc->mm, proc);
+		proc->mram = mram;
+		proc->mswp = mswp;
+		proc->active_mswp = active_mswp;
+		krnl->mm =proc->mm; // trỏ vào mm của process cuối cùng được load
 		krnl->mram = mram;
 		krnl->mswp = mswp;
 		krnl->active_mswp = active_mswp;
@@ -299,6 +308,3 @@ int main(int argc, char * argv[]) {
 	return 0;
 
 }
-
-
-

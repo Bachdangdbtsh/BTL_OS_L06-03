@@ -12,6 +12,7 @@
 #define OSMM_H
 
 #include <stdint.h>
+#include <pthread.h>
 
 #define MM_PAGING
 #define PAGING_MAX_MMSWP 4 /* max number of supported swapped space */
@@ -125,6 +126,8 @@ struct mm_struct {
    /* kmem cache pool */
    struct kcache_pool_struct *kcpooltbl;
 
+   /*tạo lock để sau này tránh bị race condition*/
+   pthread_mutex_t mm_lock;
 };
 
 
@@ -151,6 +154,9 @@ struct memphy_struct {
    /* Management structure */
    struct framephy_struct *free_fp_list;
    struct framephy_struct *used_fp_list;
+
+   /*tạo lock tránh race condition*/
+   pthread_mutex_t memphy_lock;
 };
 
 #endif
