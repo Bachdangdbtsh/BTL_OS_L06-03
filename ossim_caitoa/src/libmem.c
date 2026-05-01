@@ -226,7 +226,7 @@ int liballoc(struct pcb_t *proc, addr_t size, uint32_t reg_index)
   }
 #ifdef IODUMP
   /* TODO dump IO content (if needed) */
-  printf("[ALLOC] pid=%d, reg=%d, size=%d, addr=%08x\n", proc->pid, reg_index, size, addr);
+  printf("[ALLOC] pid=%d, reg=%d, size=%d, addr=%08x\n", proc->pid, reg_index, (int) size, (unsigned int) addr);
 
 #ifdef PAGETBL_DUMP
   print_pgtbl(proc, 0, -1); // print max TBL
@@ -453,7 +453,7 @@ int libread(struct pcb_t *proc, uint32_t source, addr_t offset, uint32_t *destin
   *destination = data;
 #ifdef IODUMP
   printf("%s:%d\n", __func__, __LINE__); 
-  printf("[READ] pid=%d, reg=%d, offset=%d, data=%d\n", proc->pid, source, offset, data);
+  printf("[READ] pid=%d, reg=%d, offset=%d, data=%d\n", proc->pid, source, (int) offset, data);
 #ifdef PAGETBL_DUMP
   print_pgtbl(proc, 0, -1);
 #endif
@@ -515,7 +515,7 @@ int libwrite(
 
 #ifdef IODUMP
   /* TODO dump IO content (if needed) */
-  printf("[WRITE] pid=%d, reg=%d, offset=%d, data=%d\n", proc->pid, destination, offset, data);
+  printf("[WRITE] pid=%d, reg=%d, offset=%d, data=%d\n", proc->pid, destination, (int) offset, data);
 #ifdef PAGETBL_DUMP
   print_pgtbl(proc, 0, -1); // print max TBL
 #endif
@@ -846,18 +846,18 @@ int libkmem_copy_from_user(struct pcb_t *caller, uint32_t source, uint32_t desti
   struct pcb_t *real_pcb = get_pcb_by_pid(caller->krnl, caller->pid);
   if (real_pcb == NULL) return -1;
   /* --- Validate source (user region) --- */
-  struct pcb_t *real_pcb = get_pcb_by_pid(caller->krnl, caller->pid);
-  if (real_pcb == NULL) return -1;
+  // struct pcb_t *real_pcb = get_pcb_by_pid(caller->krnl, caller->pid);
+  // if (real_pcb == NULL) return -1;
   
   /* offset + size must be within allocated region */
-  struct pcb_t *real_pcb = get_pcb_by_pid(caller->krnl, caller->pid);
-  if (real_pcb == NULL) return -1;
+  // struct pcb_t *real_pcb = get_pcb_by_pid(caller->krnl, caller->pid);
+  // if (real_pcb == NULL) return -1;
 
   /*
    * TODO: Map kernel address range
    */
-  struct pcb_t *real_pcb = get_pcb_by_pid(caller->krnl, caller->pid);
-  if (real_pcb == NULL) return -1;
+  // struct pcb_t *real_pcb = get_pcb_by_pid(caller->krnl, caller->pid);
+  // if (real_pcb == NULL) return -1;
   
   
   struct vm_rg_struct *dst_rg = get_symrg_byid(caller->krnl->mm, destination);
