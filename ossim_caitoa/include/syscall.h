@@ -8,10 +8,13 @@
  * for the sole purpose of studying while attending the course CO2018.
  */
 
+#ifndef OSSIM_SYSCALL_H
+#define OSSIM_SYSCALL_H
+
 #include "common.h"
 
 
-typedef struct sc_regs {
+struct sc_regs {
         arg_t a1;
         arg_t a2;
         arg_t a3;
@@ -28,7 +31,7 @@ typedef struct sc_regs {
         uint32_t orig_ax;
 
         int32_t flags;
-} sc_regs;
+};
 
 
 /* This is used purely for kernel trace the table of system call */
@@ -40,4 +43,6 @@ int __mm_swap_page(struct pcb_t *, addr_t , addr_t);
 int libsyscall(struct pcb_t*, uint32_t, arg_t, arg_t, arg_t);
 int _syscall(struct krnl_t*, uint32_t, uint32_t, struct sc_regs*);
 int __sys_ni_syscall(struct krnl_t*, struct sc_regs*);
+
+#endif
 

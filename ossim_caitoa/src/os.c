@@ -140,7 +140,7 @@ static void * ld_routine(void * args) {
 		struct krnl_t * krnl = proc->krnl = &os;	
 
 #ifdef MLQ_SCHED
-		proc->prio = ld_processes.prio[i];
+		proc->priority = ld_processes.prio[i];
 #endif
 		while (current_time() < ld_processes.start_time[i]) {
 			next_slot(timer_id);

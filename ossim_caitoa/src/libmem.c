@@ -14,10 +14,10 @@
  * Memory Module Library libmem.c 
  */
 
+#include "syscall.h"
 #include "string.h"
 #include "mm.h"
 #include "mm64.h"
-#include "syscall.h"
 #include "libmem.h"
 #include "queue.h"
 #include <stdlib.h>
