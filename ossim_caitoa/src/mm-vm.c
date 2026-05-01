@@ -16,6 +16,7 @@
 
 #include "string.h"
 #include "mm.h"
+#include "mm64.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>
