@@ -19,12 +19,11 @@
 #include "mm.h"
 #include "mm64.h"
 #include "libmem.h"
-#include "queue.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <pthread.h>
-
+#include "queue.h"
 /* Since the spec file noted that any function in user-space or middle floor must not access pcb_t in
 kernel directly, we write one helper function (get_pcb_by_pid) to assign pcb_t and work with pcb indirectly
 */

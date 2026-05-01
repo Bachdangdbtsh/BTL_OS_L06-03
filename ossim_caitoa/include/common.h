@@ -102,7 +102,6 @@ struct page_table_t
 	} table[1 << FIRST_LV_LEN];
 	int size; // Number of row in the first layer
 };
-
 /* PCB, describe information about a process */
 struct pcb_t
 {

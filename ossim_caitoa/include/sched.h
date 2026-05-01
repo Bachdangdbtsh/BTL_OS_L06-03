@@ -1,5 +1,5 @@
-#ifndef QUEUE_H
-#define QUEUE_H
+#ifndef SCHED_H
+#define SCHED_H
 
 #include "common.h"
 
