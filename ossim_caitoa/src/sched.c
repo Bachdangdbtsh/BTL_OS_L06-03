@@ -63,10 +63,41 @@ struct pcb_t * get_mlq_proc(void) {
 	/*TODO: get a process from PRIORITY [ready_queue].
 	 *      It worth to protect by a mechanism.
 	 * */
+    // Cho vong lap kiem tra lan 1 lay proc trong hang doi uu tien nhat va con slot 
+for (int i = 0; i < MAX_PRIO; i++)
+    {
+      if (!empty (&mlq_ready_queue[i]) && slot[i] > 0)
+        {
+          proc = dequeue (&mlq_ready_queue[i]);
+          slot[i]--;
+          break;
+        }
+    }
 
-	if (proc != NULL)
-		enqueue(&running_list, proc);
-	return proc;	
+    // Neu ko lay dc proc, reset slot cua MLQ de kiem tra lan 2
+    // (Truong hop co hang doi con proc nhung het slot)
+  if (proc == NULL)
+    {
+      for (int i = 0; i < MAX_PRIO; i++)
+        {
+          slot[i] = MAX_PRIO - i;
+        }
+
+      for (int i = 0; i < MAX_PRIO; i++)
+        {
+          if (!empty (&mlq_ready_queue[i]))
+            {
+              proc = dequeue (&mlq_ready_queue[i]);
+              slot[i]--;
+              break;
+            }
+        }
+    }
+  if (proc != NULL)
+    enqueue(&running_list, proc);
+
+  pthread_mutex_unlock(&queue_lock);
+  return proc;	
 }
 
 void put_mlq_proc(struct pcb_t * proc) {
@@ -80,6 +111,20 @@ void put_mlq_proc(struct pcb_t * proc) {
 	 */
 
 	pthread_mutex_lock(&queue_lock);
+
+/* Logic go proc ra khoi running_list(Dung co che xoay vong(FIFO)) 
+     * Lay cai dau ra check(dequeqe), dung thi lay, 
+     * khong thi lai nhet vo cuoi hang doi, lay cai tiep theo
+     */
+    int size = running_list.size;
+    for (int i = 0; i < size; i++) {
+        struct pcb_t * temp = dequeue(&running_list);
+        if (temp != proc) {
+     
+            enqueue(&running_list, temp);
+        }
+    }
+
 	enqueue(&mlq_ready_queue[proc->priority], proc);
 	pthread_mutex_unlock(&queue_lock);
 }
@@ -110,7 +155,7 @@ void put_proc(struct pcb_t * proc) {
 void add_proc(struct pcb_t * proc) {
 	return add_mlq_proc(proc);
 }
-#else
+
 struct pcb_t * get_proc(void) {
 	struct pcb_t * proc = NULL;
 
@@ -119,6 +164,9 @@ struct pcb_t * get_proc(void) {
 	 *       It worth to protect by a mechanism.
 	 * 
 	 */
+
+
+
 
 	pthread_mutex_unlock(&queue_lock);
 
