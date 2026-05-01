@@ -30,7 +30,7 @@ struct pcb_t *dequeue(struct queue_t *q)
     int highest_pcb_id = 0;
     for (int i = 1; i < q->size; i++)
       {
-        if (q->proc[i]->prio < q->proc[highest_pcb_id]->prio)
+        if (q->proc[i]->priority < q->proc[highest_pcb_id]->priority)
           {
             highest_pcb_id = i;
           }
