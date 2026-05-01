@@ -224,8 +224,8 @@ int liballoc(struct pcb_t *proc, addr_t size, uint32_t reg_index)
     return -1;
   }
 #ifdef IODUMP
-  /* TODO dump IO content (if needed) */
-  printf("[ALLOC] pid=%d, reg=%d, size=%d, addr=%08x\n", proc->pid, reg_index, (int) size, (unsigned int) addr);
+  /* TODO dump IO content (if needed) -- UPDATED */
+  printf("%s:%d\n", __func__, __LINE__);
 
 #ifdef PAGETBL_DUMP
   print_pgtbl(proc, 0, -1); // print max TBL
@@ -250,7 +250,6 @@ int libfree(struct pcb_t *proc, uint32_t reg_index)
 
 #ifdef IODUMP
   printf("%s:%d\n", __func__, __LINE__);
-  printf("[FREE] pid=%d, reg=%d\n", proc->pid, reg_index);
 #ifdef PAGETBL_DUMP
   print_pgtbl(proc, 0, -1);
 #endif
@@ -452,7 +451,7 @@ int libread(struct pcb_t *proc, uint32_t source, addr_t offset, uint32_t *destin
   *destination = data;
 #ifdef IODUMP
   printf("%s:%d\n", __func__, __LINE__); 
-  printf("[READ] pid=%d, reg=%d, offset=%d, data=%d\n", proc->pid, source, (int) offset, data);
+  
 #ifdef PAGETBL_DUMP
   print_pgtbl(proc, 0, -1);
 #endif
@@ -514,7 +513,7 @@ int libwrite(
 
 #ifdef IODUMP
   /* TODO dump IO content (if needed) */
-  printf("[WRITE] pid=%d, reg=%d, offset=%d, data=%d\n", proc->pid, destination, (int) offset, data);
+   printf("%s:%d\n", __func__, __LINE__);
 #ifdef PAGETBL_DUMP
   print_pgtbl(proc, 0, -1); // print max TBL
 #endif

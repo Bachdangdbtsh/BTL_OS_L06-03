@@ -13,6 +13,7 @@
 
 #include <stdint.h>
 #include <sys/types.h>
+#include <pthread.h>
 
 
 #define MM_PAGING

@@ -650,6 +650,7 @@ int print_pgtbl(struct pcb_t *caller, addr_t start, addr_t end)
 //addr_t pgit;
 //struct krnl_t *krnl = caller->krnl;
 
+
   addr_t pgd=0;
   addr_t p4d=0;
   addr_t pud=0;
@@ -658,6 +659,7 @@ int print_pgtbl(struct pcb_t *caller, addr_t start, addr_t end)
 
   get_pd_from_address(start, &pgd, &p4d, &pud, &pmd, &pt);
 
+  printf("print_pgtbl:\n");
   /* TODO traverse the page map and dump the page directory entries */
   if (caller != NULL && caller->mm != NULL) {
     addr_t *pgd_table = caller->mm->pgd;
