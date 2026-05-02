@@ -266,42 +266,106 @@ int libfree(struct pcb_t *proc, uint32_t reg_index)
  *@caller: caller
  *
  */
+// int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
+// {
+//   uint32_t pte = pte_get_entry(caller, pgn);
+//   if (!PAGING_PAGE_PRESENT(pte)) { 
+//     /* Page is not online, make it actively living */
+//     struct pcb_t *real_pcb = get_pcb_by_pid(caller->krnl, caller->pid);
+//     if (real_pcb == NULL) return -1;
+//     // Optional: Add mutex here
+//     // pthread_mutex_lock(&real_pcb->mm->mm_lock);
+//     addr_t vicpgn, swpfpn;
+//     addr_t vicfpn;
+//     //    addr_t vicpte;
+//     // struct sc_regs regs;
+//     /* TODO Initialize the target frame storing our variable */
+//     addr_t tgtfpn;
+//     /* TODO: Play with your paging theory here */
+//     /* Find victim page */
+//     if (find_victim_page(real_pcb->mm, &vicpgn) == -1) {
+//       // pthread_mutex_unlock(&real_pcb->mm->mm_lock);
+//       return -1;
+//     } 
+
+//     /* Get free frame in MEMSWP */
+//     if (MEMPHY_get_freefp(caller->krnl->active_mswp, &swpfpn) == -1) return -1;
+//     /* TODO: Implement swap frame from MEMRAM to MEMSWP and vice versa*/
+
+//     /* TODO copy victim frame to swap 
+//      * SWP(vicfpn <--> swpfpn)
+//      * SYSCALL 1 sys_memmap
+//      */
+//     uint32_t vicpte = pte_get_entry(caller, vicpgn);
+//     vicfpn = PAGING_FPN(vicpte);
+
+//     // Swap between RAM and SWAP
+//     struct sc_regs regs;
+//     regs.a1 = SYSMEM_SWP_OP;
+//     regs.a2 = vicfpn;    // source frame trong RAM
+//     regs.a3 = swpfpn;    // dest frame trong SWAP
+//     _syscall(caller->krnl, caller->pid, 17, &regs);
+
+//     /* Update page table */
+//     pte_set_swap(caller, vicpgn, 0, swpfpn);
+
+//     /* Update its online status of the target page */
+//     // pte_set_fpn(caller, vicpgn, vicfpn);
+
+//     /* Swap frame RAM victim to load page*/
+//     tgtfpn = vicfpn;
+
+//     /* Copy page from SWAP into RAM frame
+//      */
+//     addr_t tgtswpfpn = PAGING_SWP(pte);
+//     __swap_cp_page(caller->krnl->active_mswp, tgtswpfpn, caller->krnl->mram, tgtfpn);
+//     /* Free swap frame with free list của swap */
+//     MEMPHY_put_freefp(caller->krnl->active_mswp, tgtswpfpn);
+//     /* Update PTE of destination page — mark online with new fpn */
+//     pte_set_fpn(caller, pgn, tgtfpn);
+//     enlist_pgn_node(&real_pcb->mm->fifo_pgn, pgn);
+//   }
+//   *fpn = PAGING_FPN(pte_get_entry(caller, pgn));
+//   return 0;
+// }
+
 int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
 {
-
   uint32_t pte = pte_get_entry(caller, pgn);
 
   if (!PAGING_PAGE_PRESENT(pte)) { 
     /* Page is not online, make it actively living */
     struct pcb_t *real_pcb = get_pcb_by_pid(caller->krnl, caller->pid);
     if (real_pcb == NULL) return -1;
-    addr_t vicpgn, swpfpn;
-    addr_t vicfpn;
-    //    addr_t vicpte;
-    // struct sc_regs regs;
 
-    /* TODO Initialize the target frame storing our variable */
-    addr_t tgtfpn;
+    // 1. BẬT KHÓA BẢO VỆ TIẾN TRÌNH
+    printf("[DEBUG] Tien trinh %d dang doi mm_lock...\n", &caller->pid);
+    pthread_mutex_lock(&real_pcb->mm->mm_lock);
+    printf("[DEBUG] Tien trinh %d da CAM DUOC mm_lock!\n", &caller->pid);
 
-    /* TODO: Play with your paging theory here */
+    addr_t vicpgn, swpfpn, vicfpn, tgtfpn;
 
     /* Find victim page */
-    if (find_victim_page(real_pcb->mm, &vicpgn) == -1) return -1;
+    if (find_victim_page(real_pcb->mm, &vicpgn) == -1) {
+        pthread_mutex_unlock(&real_pcb->mm->mm_lock); // Phải mở khóa trước khi thoát
+        return -1;
+    }
 
     /* Get free frame in MEMSWP */
-    if (MEMPHY_get_freefp(caller->krnl->active_mswp, &swpfpn) == -1) return -1;
+    // 2. BẬT KHÓA TẠM THỜI ĐỂ LẤY KHUNG TRANG SWAP
+    pthread_mutex_lock(&caller->krnl->active_mswp->memphy_lock);
+    int swp_ret = MEMPHY_get_freefp(caller->krnl->active_mswp, &swpfpn);
+    pthread_mutex_unlock(&caller->krnl->active_mswp->memphy_lock);
+    
+    if (swp_ret == -1) {
+        pthread_mutex_unlock(&real_pcb->mm->mm_lock); // Phải mở khóa trước khi thoát
+        return -1;
+    }
 
-
-    /* TODO: Implement swap frame from MEMRAM to MEMSWP and vice versa*/
-
-    /* TODO copy victim frame to swap 
-     * SWP(vicfpn <--> swpfpn)
-     * SYSCALL 1 sys_memmap
-     */
     uint32_t vicpte = pte_get_entry(caller, vicpgn);
     vicfpn = PAGING_FPN(vicpte);
 
-    // Swap between RAM and SWAP
+    // Swap between RAM and SWAP 
     struct sc_regs regs;
     regs.a1 = SYSMEM_SWP_OP;
     regs.a2 = vicfpn;    // source frame trong RAM
@@ -311,23 +375,26 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
     /* Update page table */
     pte_set_swap(caller, vicpgn, 0, swpfpn);
 
-    /* Update its online status of the target page */
-    // pte_set_fpn(caller, vicpgn, vicfpn);
-
     /* Swap frame RAM victim to load page*/
     tgtfpn = vicfpn;
 
-    /* Copy page from SWAP into RAM frame
-     */
+    /* Copy page from SWAP into RAM frame */
     addr_t tgtswpfpn = PAGING_SWP(pte);
     __swap_cp_page(caller->krnl->active_mswp, tgtswpfpn, caller->krnl->mram, tgtfpn);
 
     /* Free swap frame with free list của swap */
+    // 3. BẬT KHÓA TẠM THỜI ĐỂ TRẢ KHUNG TRANG SWAP
+    pthread_mutex_lock(&caller->krnl->active_mswp->memphy_lock);
     MEMPHY_put_freefp(caller->krnl->active_mswp, tgtswpfpn);
+    pthread_mutex_unlock(&caller->krnl->active_mswp->memphy_lock);
 
     /* Update PTE of destination page — mark online with new fpn */
     pte_set_fpn(caller, pgn, tgtfpn);
     enlist_pgn_node(&real_pcb->mm->fifo_pgn, pgn);
+
+    // 4. MỞ KHÓA HOÀN TẤT
+    printf("[DEBUG] Tien trinh %d chuan bi NHA mm_lock...\n", &caller->pid);
+    pthread_mutex_unlock(&real_pcb->mm->mm_lock);
   }
 
   *fpn = PAGING_FPN(pte_get_entry(caller, pgn));
