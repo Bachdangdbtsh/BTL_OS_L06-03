@@ -338,34 +338,45 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
     struct pcb_t *real_pcb = get_pcb_by_pid(caller->krnl, caller->pid);
     if (real_pcb == NULL) return -1;
 
-    // 1. BẬT KHÓA BẢO VỆ TIẾN TRÌNH
-    printf("[DEBUG] Tien trinh %d dang doi mm_lock...\n", &caller->pid);
+    // 1. IN LOG VÀ BẬT KHÓA MM_LOCK
+    // printf("[DEBUG] Tien trinh %d dang doi mm_lock...\n", caller->pid);
     pthread_mutex_lock(&real_pcb->mm->mm_lock);
-    printf("[DEBUG] Tien trinh %d da CAM DUOC mm_lock!\n", &caller->pid);
+    // printf("[DEBUG] Tien trinh %d da CAM DUOC mm_lock!\n", caller->pid);
 
-    addr_t vicpgn, swpfpn, vicfpn, tgtfpn;
+    addr_t vicpgn, swpfpn;
+    addr_t vicfpn;
+    
+    /* TODO Initialize the target frame storing our variable */
+    addr_t tgtfpn;
 
+    /* TODO: Play with your paging theory here */
+    
     /* Find victim page */
     if (find_victim_page(real_pcb->mm, &vicpgn) == -1) {
-        pthread_mutex_unlock(&real_pcb->mm->mm_lock); // Phải mở khóa trước khi thoát
+        // NHẢ KHÓA NẾU LỖI
+        // printf("[DEBUG] Tien trinh %d chuan bi NHA mm_lock...\n", caller->pid);
+        pthread_mutex_unlock(&real_pcb->mm->mm_lock);
         return -1;
     }
 
     /* Get free frame in MEMSWP */
-    // 2. BẬT KHÓA TẠM THỜI ĐỂ LẤY KHUNG TRANG SWAP
+    // BẬT KHÓA TẠM THỜI CHO SWAP
     pthread_mutex_lock(&caller->krnl->active_mswp->memphy_lock);
     int swp_ret = MEMPHY_get_freefp(caller->krnl->active_mswp, &swpfpn);
     pthread_mutex_unlock(&caller->krnl->active_mswp->memphy_lock);
-    
+
     if (swp_ret == -1) {
-        pthread_mutex_unlock(&real_pcb->mm->mm_lock); // Phải mở khóa trước khi thoát
+        // NHẢ KHÓA NẾU LỖI
+        // printf("[DEBUG] Tien trinh %d chuan bi NHA mm_lock...\n", caller->pid);
+        pthread_mutex_unlock(&real_pcb->mm->mm_lock);
         return -1;
     }
 
+    /* TODO: Implement swap frame from MEMRAM to MEMSWP and vice versa*/
     uint32_t vicpte = pte_get_entry(caller, vicpgn);
     vicfpn = PAGING_FPN(vicpte);
 
-    // Swap between RAM and SWAP 
+    // Swap between RAM and SWAP
     struct sc_regs regs;
     regs.a1 = SYSMEM_SWP_OP;
     regs.a2 = vicfpn;    // source frame trong RAM
@@ -383,7 +394,7 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
     __swap_cp_page(caller->krnl->active_mswp, tgtswpfpn, caller->krnl->mram, tgtfpn);
 
     /* Free swap frame with free list của swap */
-    // 3. BẬT KHÓA TẠM THỜI ĐỂ TRẢ KHUNG TRANG SWAP
+    // BẬT KHÓA TẠM THỜI CHO SWAP
     pthread_mutex_lock(&caller->krnl->active_mswp->memphy_lock);
     MEMPHY_put_freefp(caller->krnl->active_mswp, tgtswpfpn);
     pthread_mutex_unlock(&caller->krnl->active_mswp->memphy_lock);
@@ -392,8 +403,8 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
     pte_set_fpn(caller, pgn, tgtfpn);
     enlist_pgn_node(&real_pcb->mm->fifo_pgn, pgn);
 
-    // 4. MỞ KHÓA HOÀN TẤT
-    printf("[DEBUG] Tien trinh %d chuan bi NHA mm_lock...\n", &caller->pid);
+    // 2. IN LOG VÀ NHẢ KHÓA KHI THÀNH CÔNG
+    // printf("[DEBUG] Tien trinh %d chuan bi NHA mm_lock...\n", caller->pid);
     pthread_mutex_unlock(&real_pcb->mm->mm_lock);
   }
 
