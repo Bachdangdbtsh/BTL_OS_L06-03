@@ -27,18 +27,23 @@
 /* Since the spec file noted that any function in user-space or middle floor must not access pcb_t in
 kernel directly, we write one helper function (get_pcb_by_pid) to assign pcb_t and work with pcb indirectly
 */
+extern pthread_mutex_t queue_lock;
 
 // Implement static helper function to traverse pcb in userspace method
 static struct pcb_t *get_pcb_by_pid(struct krnl_t *krnl, uint32_t pid)
 {
   if (!krnl || !krnl->running_list->size) return NULL;
-
+  
+  struct pcb_t *found = NULL;
+  pthread_mutex_lock(&queue_lock); // Khóa trước khi duyệt
   for (int i = 0; i < krnl->running_list->size; i++) {
     if (krnl->running_list->proc[i] != NULL && krnl->running_list->proc[i]->pid == pid) {
-      return krnl->running_list->proc[i];
+      found = krnl->running_list->proc[i];
+      break;
     }
   }
-  return NULL;
+  pthread_mutex_unlock(&queue_lock); // Nhả khóa sau khi xong
+  return found;
 }
 
 static pthread_mutex_t mmvm_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -334,84 +339,84 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
   uint32_t pte = pte_get_entry(caller, pgn);
 
   if (!PAGING_PAGE_PRESENT(pte)) { 
-    /* Page is not online, make it actively living */
     struct pcb_t *real_pcb = get_pcb_by_pid(caller->krnl, caller->pid);
     if (real_pcb == NULL) return -1;
 
-    // 1. IN LOG VÀ BẬT KHÓA MM_LOCK
-    // printf("[DEBUG] Tien trinh %d dang doi mm_lock...\n", caller->pid);
+    // 1. Bật khóa bảo vệ cấu trúc mm của tiến trình
     pthread_mutex_lock(&real_pcb->mm->mm_lock);
-    // printf("[DEBUG] Tien trinh %d da CAM DUOC mm_lock!\n", caller->pid);
 
-    addr_t vicpgn, swpfpn;
-    addr_t vicfpn;
-    
-    /* TODO Initialize the target frame storing our variable */
-    addr_t tgtfpn;
+    addr_t tgtfpn; // Khung trang RAM đích
 
-    /* TODO: Play with your paging theory here */
-    
-    /* Find victim page */
-    if (find_victim_page(real_pcb->mm, &vicpgn) == -1) {
-        // NHẢ KHÓA NẾU LỖI
-        // printf("[DEBUG] Tien trinh %d chuan bi NHA mm_lock...\n", caller->pid);
-        pthread_mutex_unlock(&real_pcb->mm->mm_lock);
-        return -1;
+    // 2. THỬ XIN RAM TRỐNG TRƯỚC (Logic Demand Paging chuẩn)
+    addr_t free_fpn;
+    pthread_mutex_lock(&caller->krnl->mram->memphy_lock);
+    int ram_ret = MEMPHY_get_freefp(caller->krnl->mram, &free_fpn);
+    pthread_mutex_unlock(&caller->krnl->mram->memphy_lock);
+
+    if (ram_ret == 0) {
+        // Trường hợp RAM còn chỗ
+        tgtfpn = free_fpn;
+    } 
+    else {
+        // TRƯỜNG HỢP RAM HẾT: Bắt đầu quy trình Swap
+        addr_t vicpgn, swpfpn, vicfpn;
+
+        /* Tìm trang nạn nhân */
+        if (find_victim_page(real_pcb->mm, &vicpgn) == -1) {
+            pthread_mutex_unlock(&real_pcb->mm->mm_lock);
+            return -1;
+        }
+
+        /* Xin khung trang trống dưới SWAP */
+        pthread_mutex_lock(&caller->krnl->active_mswp->memphy_lock);
+        int swp_ret = MEMPHY_get_freefp(caller->krnl->active_mswp, &swpfpn);
+        pthread_mutex_unlock(&caller->krnl->active_mswp->memphy_lock);
+        
+        if (swp_ret == -1) {
+            pthread_mutex_unlock(&real_pcb->mm->mm_lock);
+            return -1;
+        }
+
+        /* Lấy FPN của nạn nhân */
+        uint32_t vicpte = pte_get_entry(caller, vicpgn);
+        vicfpn = PAGING_FPN(vicpte);
+
+        /* Đẩy nạn nhân từ RAM xuống SWAP thông qua Syscall */
+        struct sc_regs regs;
+        regs.a1 = SYSMEM_SWP_OP;
+        regs.a2 = vicfpn;    
+        regs.a3 = swpfpn;    
+        _syscall(caller->krnl, caller->pid, 17, &regs);
+
+        /* Cập nhật Page Table của nạn nhân thành trạng thái Swapped */
+        pte_set_swap(caller, vicpgn, 0, swpfpn);
+
+        /* Lấy khung RAM của nạn nhân làm đích cho trang mới */
+        tgtfpn = vicfpn;
     }
 
-    /* Get free frame in MEMSWP */
-    // BẬT KHÓA TẠM THỜI CHO SWAP
-    pthread_mutex_lock(&caller->krnl->active_mswp->memphy_lock);
-    int swp_ret = MEMPHY_get_freefp(caller->krnl->active_mswp, &swpfpn);
-    pthread_mutex_unlock(&caller->krnl->active_mswp->memphy_lock);
+    // 3. Nạp dữ liệu từ Swap lên RAM (nếu trang này từng bị swap xuống trước đó)
+    // Kiểm tra bit PAGING_PTE_SWAPPED_MASK (bit 30)
+    if (pte & PAGING_PTE_SWAPPED_MASK) {
+        addr_t tgtswpfpn = PAGING_SWP(pte);
+        __swap_cp_page(caller->krnl->active_mswp, tgtswpfpn, caller->krnl->mram, tgtfpn);
 
-    if (swp_ret == -1) {
-        // NHẢ KHÓA NẾU LỖI
-        // printf("[DEBUG] Tien trinh %d chuan bi NHA mm_lock...\n", caller->pid);
-        pthread_mutex_unlock(&real_pcb->mm->mm_lock);
-        return -1;
+        /* Giải phóng khung trang dưới Swap */
+        pthread_mutex_lock(&caller->krnl->active_mswp->memphy_lock);
+        MEMPHY_put_freefp(caller->krnl->active_mswp, tgtswpfpn);
+        pthread_mutex_unlock(&caller->krnl->active_mswp->memphy_lock);
     }
 
-    /* TODO: Implement swap frame from MEMRAM to MEMSWP and vice versa*/
-    uint32_t vicpte = pte_get_entry(caller, vicpgn);
-    vicfpn = PAGING_FPN(vicpte);
-
-    // Swap between RAM and SWAP
-    struct sc_regs regs;
-    regs.a1 = SYSMEM_SWP_OP;
-    regs.a2 = vicfpn;    // source frame trong RAM
-    regs.a3 = swpfpn;    // dest frame trong SWAP
-    _syscall(caller->krnl, caller->pid, 17, &regs);
-
-    /* Update page table */
-    pte_set_swap(caller, vicpgn, 0, swpfpn);
-
-    /* Swap frame RAM victim to load page*/
-    tgtfpn = vicfpn;
-
-    /* Copy page from SWAP into RAM frame */
-    addr_t tgtswpfpn = PAGING_SWP(pte);
-    __swap_cp_page(caller->krnl->active_mswp, tgtswpfpn, caller->krnl->mram, tgtfpn);
-
-    /* Free swap frame with free list của swap */
-    // BẬT KHÓA TẠM THỜI CHO SWAP
-    pthread_mutex_lock(&caller->krnl->active_mswp->memphy_lock);
-    MEMPHY_put_freefp(caller->krnl->active_mswp, tgtswpfpn);
-    pthread_mutex_unlock(&caller->krnl->active_mswp->memphy_lock);
-
-    /* Update PTE of destination page — mark online with new fpn */
+    /* 4. Cập nhật Page Table cho trang hiện tại và đưa vào danh sách quản lý FIFO */
     pte_set_fpn(caller, pgn, tgtfpn);
     enlist_pgn_node(&real_pcb->mm->fifo_pgn, pgn);
 
-    // 2. IN LOG VÀ NHẢ KHÓA KHI THÀNH CÔNG
-    // printf("[DEBUG] Tien trinh %d chuan bi NHA mm_lock...\n", caller->pid);
     pthread_mutex_unlock(&real_pcb->mm->mm_lock);
   }
 
   *fpn = PAGING_FPN(pte_get_entry(caller, pgn));
   return 0;
 }
-
 
 // KERNEL FUNCTION
 /*pg_getval - read value at given offset
@@ -560,7 +565,7 @@ int __write(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, BYTE value
   struct vm_rg_struct *currg  = get_symrg_byid(real_pcb->mm, rgid);
   struct vm_area_struct *cur_vma = get_vma_by_num(real_pcb->mm, vmaid);
 
-  if (currg == NULL || cur_vma == NULL) {
+  if (currg == NULL || cur_vma == NULL || currg->rg_start + offset >= currg->rg_end) {
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
   }
@@ -569,10 +574,10 @@ int __write(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, BYTE value
     return -1;
   }
 
-  pg_setval(real_pcb->mm, currg->rg_start + offset, value, caller);
+  int result = pg_setval(real_pcb->mm, currg->rg_start + offset, value, caller);
 
   pthread_mutex_unlock(&mmvm_lock);
-  return 0;
+  return result;
 }
 
 
@@ -591,7 +596,7 @@ int libwrite(
 
 #ifdef IODUMP
   /* TODO dump IO content (if needed) */
-   printf("%s:%d\n", __func__, __LINE__);
+  printf("%s:%d\n", __func__, __LINE__);
 #ifdef PAGETBL_DUMP
   print_pgtbl(proc, 0, -1); // print max TBL
 #endif
@@ -699,9 +704,13 @@ addr_t __kmalloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t 
     addr_t fpn;
 
     /* Fetch 1 physical frame from RAM */
-    if (MEMPHY_get_freefp(krnl->mram, &fpn) != 0) {
-      pthread_mutex_unlock(&mmvm_lock);
-      return -1; /* run out of RAM */
+    pthread_mutex_lock(&krnl->mram->memphy_lock);
+    int get_fp_res = MEMPHY_get_freefp(krnl->mram, &fpn);
+    pthread_mutex_unlock(&krnl->mram->memphy_lock);
+
+    if (get_fp_res != 0) {
+      pthread_mutex_unlock(&mmvm_lock); // Nhớ unlock mmvm_lock trước khi thoát
+      return -1; /* Hết RAM */
     }
     // calculate page number of virtual address
     addr_t virtual_addr = alloc_start + (addr_t)i * PAGING64_PAGESZ;
@@ -726,7 +735,11 @@ addr_t __kmalloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t 
     addr_t fpn;
     addr_t pgn = (alloc_start / PAGING_PAGESZ) + i;
 
-    if (MEMPHY_get_freefp(krnl->mram, &fpn) != 0) {
+    pthread_mutex_lock(&krnl->mram->memphy_lock);
+    int get_fp_res = MEMPHY_get_freefp(krnl->mram, &fpn);
+    pthread_mutex_unlock(&krnl->mram->memphy_lock);
+
+    if (get_fp_res != 0) {
       pthread_mutex_unlock(&mmvm_lock);
       return -1;
     }

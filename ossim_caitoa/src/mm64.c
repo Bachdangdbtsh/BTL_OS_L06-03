@@ -321,10 +321,10 @@ addr_t vmap_page_range(struct pcb_t *caller,           // process call
       break; // trường hợp hết frames không đủ để cấp
     }
     addr_t fpn = frames_traver->fpn; // lấy frame number
-    pthread_mutex_lock(&caller->mm->mm_lock); // bật mutex lên tránh race condition
+    // pthread_mutex_lock(&caller->mm->mm_lock); // bật mutex lên tránh race condition
     pte_set_fpn(caller, pgn + pgit, fpn);
     enlist_pgn_node(&caller->mm->fifo_pgn, pgn + pgit);
-    pthread_mutex_unlock(&caller->mm->mm_lock);
+    // pthread_mutex_unlock(&caller->mm->mm_lock);
     frames_traver = frames_traver->fp_next;
   }
   /* TODO map range of frame to address space

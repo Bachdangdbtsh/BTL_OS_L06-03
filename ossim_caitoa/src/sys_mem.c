@@ -20,6 +20,7 @@
 #include "mm.h"
 #endif
 
+extern pthread_mutex_t queue_lock;
 //typedef char BYTE;
 
 
@@ -55,6 +56,7 @@ int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
     
     if (running_list != NULL) 
     {
+        pthread_mutex_lock(&queue_lock);
         for (int i = 0; i < running_list->size; i++) 
         {
             if (running_list->proc[i] != NULL && running_list->proc[i]->pid == pid) 
@@ -63,6 +65,7 @@ int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
                 break;
             }
         }
+        pthread_mutex_unlock(&queue_lock);
     }
     
     // need error_Log and safeguard to avoid race condition if caller == NULL (pid not found)
