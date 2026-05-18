@@ -151,7 +151,7 @@ int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff)
   }
 #endif
 	
-  //SETBIT(*pte, PAGING_PTE_PRESENT_MASK); check lại vấn đề bit 30 và 31 có cùng =1 được không
+  SETBIT(*pte, PAGING_PTE_PRESENT_MASK); // check lại vấn đề bit 30 và 31 có cùng =1 được không
   CLRBIT(*pte, PAGING_PTE_PRESENT_MASK); // thay đổi bit 31 về 0
   SETBIT(*pte, PAGING_PTE_SWAPPED_MASK);
 

@@ -271,69 +271,6 @@ int libfree(struct pcb_t *proc, uint32_t reg_index)
  *@caller: caller
  *
  */
-// int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
-// {
-//   uint32_t pte = pte_get_entry(caller, pgn);
-//   if (!PAGING_PAGE_PRESENT(pte)) { 
-//     /* Page is not online, make it actively living */
-//     struct pcb_t *real_pcb = get_pcb_by_pid(caller->krnl, caller->pid);
-//     if (real_pcb == NULL) return -1;
-//     // Optional: Add mutex here
-//     // pthread_mutex_lock(&real_pcb->mm->mm_lock);
-//     addr_t vicpgn, swpfpn;
-//     addr_t vicfpn;
-//     //    addr_t vicpte;
-//     // struct sc_regs regs;
-//     /* TODO Initialize the target frame storing our variable */
-//     addr_t tgtfpn;
-//     /* TODO: Play with your paging theory here */
-//     /* Find victim page */
-//     if (find_victim_page(real_pcb->mm, &vicpgn) == -1) {
-//       // pthread_mutex_unlock(&real_pcb->mm->mm_lock);
-//       return -1;
-//     } 
-
-//     /* Get free frame in MEMSWP */
-//     if (MEMPHY_get_freefp(caller->krnl->active_mswp, &swpfpn) == -1) return -1;
-//     /* TODO: Implement swap frame from MEMRAM to MEMSWP and vice versa*/
-
-//     /* TODO copy victim frame to swap 
-//      * SWP(vicfpn <--> swpfpn)
-//      * SYSCALL 1 sys_memmap
-//      */
-//     uint32_t vicpte = pte_get_entry(caller, vicpgn);
-//     vicfpn = PAGING_FPN(vicpte);
-
-//     // Swap between RAM and SWAP
-//     struct sc_regs regs;
-//     regs.a1 = SYSMEM_SWP_OP;
-//     regs.a2 = vicfpn;    // source frame trong RAM
-//     regs.a3 = swpfpn;    // dest frame trong SWAP
-//     _syscall(caller->krnl, caller->pid, 17, &regs);
-
-//     /* Update page table */
-//     pte_set_swap(caller, vicpgn, 0, swpfpn);
-
-//     /* Update its online status of the target page */
-//     // pte_set_fpn(caller, vicpgn, vicfpn);
-
-//     /* Swap frame RAM victim to load page*/
-//     tgtfpn = vicfpn;
-
-//     /* Copy page from SWAP into RAM frame
-//      */
-//     addr_t tgtswpfpn = PAGING_SWP(pte);
-//     __swap_cp_page(caller->krnl->active_mswp, tgtswpfpn, caller->krnl->mram, tgtfpn);
-//     /* Free swap frame with free list của swap */
-//     MEMPHY_put_freefp(caller->krnl->active_mswp, tgtswpfpn);
-//     /* Update PTE of destination page — mark online with new fpn */
-//     pte_set_fpn(caller, pgn, tgtfpn);
-//     enlist_pgn_node(&real_pcb->mm->fifo_pgn, pgn);
-//   }
-//   *fpn = PAGING_FPN(pte_get_entry(caller, pgn));
-//   return 0;
-// }
-
 int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
 {
   uint32_t pte = pte_get_entry(caller, pgn);
@@ -949,7 +886,7 @@ int libkmem_copy_from_user(struct pcb_t *caller, uint32_t source, uint32_t desti
   // if (real_pcb == NULL) return -1;
   
   
-  struct vm_rg_struct *dst_rg = get_symrg_byid(caller->krnl->mm, destination);
+  struct vm_rg_struct *dst_rg = get_symrg_byid(caller->mm, destination);
   if (dst_rg == NULL || (dst_rg->rg_start == 0 && dst_rg->rg_end == 0)) return -1;
   if ((addr_t)size > dst_rg->rg_end - dst_rg->rg_start) return -1;
 
@@ -982,7 +919,7 @@ int libkmem_copy_to_user(struct pcb_t *caller, uint32_t source, uint32_t destina
   /* TODO: provide OS level management kmem
    */
   // pthread_mutex_lock(&mmvm_lock);
-  struct vm_rg_struct *src_rg = get_symrg_byid(caller->krnl->mm, source);
+  struct vm_rg_struct *src_rg = get_symrg_byid(caller->mm, source);
   if (src_rg == NULL || (src_rg->rg_start == 0 && src_rg->rg_end == 0)) {
     return -1;
   } 
@@ -1037,7 +974,7 @@ int __read_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, 
   //krnl->krnl_pgd ... or krnl->pgd ... based on kmem implementation strategy
 
   struct krnl_t *krnl = caller->krnl;
-  struct vm_rg_struct *currg = get_symrg_byid(krnl->mm, rgid);
+  struct vm_rg_struct *currg = get_symrg_byid(caller->mm, rgid);
   if (currg == 0 || (currg->rg_start == 0 && currg->rg_end == 0)) {
     return -1;
   } 
@@ -1046,36 +983,25 @@ int __read_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, 
   addr_t virtual_addr = currg->rg_start + offset;
 #ifdef MM64
   /* ---- 64-bit: walk 5-level page table ---- */
-  addr_t pgd_idx, p4d_idx, pud_idx, pmd_idx, pt_idx;
-  get_pd_from_address(virtual_addr, &pgd_idx, &p4d_idx, &pud_idx, &pmd_idx, &pt_idx);
+  int page_off = virtual_addr & (PAGING64_PAGESZ - 1); 
+  addr_t pgn = virtual_addr / PAGING64_PAGESZ;
+#else
+  /* ---- 32-bit: flat 1-level page table ---- */
+  int pgn = PAGING_PGN(virtual_addr);
+  int page_off = PAGING_OFFST(virtual_addr);
+#endif
 
-  /* Use pt_idx to access krnl_pte (leaf level) */
-  addr_t pte = krnl->krnl_pt[pt_idx];
-  // validate if page at index pte is present or not
+  uint32_t pte = pte_get_entry(caller, pgn);
+  
+  
   if (!PAGING_PAGE_PRESENT(pte)) {
     return -1;
   }
 
-  int page_off = virtual_addr & (PAGING64_PAGESZ - 1); 
+  // Extract Physical Frame
   addr_t fpn = PAGING_FPN(pte);
   addr_t phyaddr = (fpn << PAGING_ADDR_FPN_LOBIT) + page_off;
-#else
-    /* ---- 32-bit: flat 1-level page table ---- */
-    int pgn = PAGING_PGN(virtual_addr);
-    int page_off = PAGING_OFFST(virtual_addr);
 
-    uint32_t pte = krnl->krnl_pgd[pgn];
-    // validate if page at index pte is present or not
-    if (!PAGING_PAGE_PRESENT(pte)) {
-      return -1;
-    }
-    addr_t fpn = PAGING_FPN(pte);
-    addr_t phyaddr = (fpn << PAGING_ADDR_FPN_LOBIT) + page_off;
-
-#endif
-
-
-  
   MEMPHY_read(krnl->mram, phyaddr, data);
   return 0;
 }
@@ -1103,18 +1029,15 @@ int __write_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
   addr_t virtual_addr = currg->rg_start + offset;
 
 #ifdef MM64
-    addr_t pgd_idx, p4d_idx, pud_idx, pmd_idx, pt_idx;
-    get_pd_from_address(virtual_addr, &pgd_idx, &p4d_idx, &pud_idx, &pmd_idx, &pt_idx);
-
-    addr_t pte = krnl->krnl_pt[pt_idx];
-    int off = virtual_addr & (PAGING64_PAGESZ - 1);
-
+  int off = virtual_addr & (PAGING64_PAGESZ - 1);
+  addr_t pgn = virtual_addr / PAGING64_PAGESZ;
 #else
-    int pgn = PAGING_PGN(virtual_addr);
-    int off = PAGING_OFFST(virtual_addr);
-
-    uint32_t pte = krnl->krnl_pgd[pgn];
+  int pgn = PAGING_PGN(virtual_addr);
+  int off = PAGING_OFFST(virtual_addr);
 #endif
+
+  // update: caller
+  uint32_t pte = pte_get_entry(caller, pgn);
 
   if (!PAGING_PAGE_PRESENT(pte)) {
     return -1;
@@ -1123,6 +1046,7 @@ int __write_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
   addr_t fpn = PAGING_FPN(pte);
   addr_t physical_addr = (fpn << PAGING_ADDR_FPN_LOBIT) + off;
 
+  
   MEMPHY_write(krnl->mram, physical_addr, value);
   return 0;
 }
