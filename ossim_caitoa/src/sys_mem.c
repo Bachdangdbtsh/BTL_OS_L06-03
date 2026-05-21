@@ -47,13 +47,7 @@ int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
     // To tranverse properly, we base on struct queue_t *running_list and its priority level
     struct queue_t *running_list = krnl->running_list;
     struct pcb_t *caller = NULL;
-    
-    /*pcb_t caller will be assigned with the process which matches finding pid.
-     * Important: We shouldn't assign caller with malloc(sizeof(struct pcb_t)) because
-     * in case the process->pid == pid, address of *caller is missed, which leads to memory leak
-     * Therefore, we have 2 choices: Assign caller with null pointer OR free() caller before assigning
-     * We choose null pointer since we are currently lack of free() method*/
-    
+        
     if (running_list != NULL) 
     {
         pthread_mutex_lock(&queue_lock);
@@ -68,7 +62,6 @@ int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
         pthread_mutex_unlock(&queue_lock);
     }
     
-    // need error_Log and safeguard to avoid race condition if caller == NULL (pid not found)
 	if (caller == NULL)
     {
         printf("sys_mem.c: PID %d not found in *running_list", pid);

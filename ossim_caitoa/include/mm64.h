@@ -61,6 +61,10 @@
 #define PAGING64_ADDR_P4D_MASK  GENMASK64(PAGING64_ADDR_P4D_HIBIT,PAGING64_ADDR_P4D_LOBIT)
 #define PAGING64_ADDR_PGD_MASK  GENMASK64(PAGING64_ADDR_PGD_HIBIT,PAGING64_ADDR_PGD_LOBIT)
 
-
+/*Update: Memory layout address*/
+#define UserSpace_static_start 0x0000000000000000
+#define UserSpace_static_end   0x000000000FFFFFFF
+#define UserSpace_heap_start  0x0000000100000000
+#define UserSpace_heap_end    0x00FFFFFFFFFFFFFF 
 
 #endif

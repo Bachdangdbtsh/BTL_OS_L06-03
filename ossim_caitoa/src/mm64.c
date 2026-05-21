@@ -321,10 +321,10 @@ addr_t vmap_page_range(struct pcb_t *caller,           // process call
       break; // trường hợp hết frames không đủ để cấp
     }
     addr_t fpn = frames_traver->fpn; // lấy frame number
-    // pthread_mutex_lock(&caller->mm->mm_lock); // bật mutex lên tránh race condition
+    pthread_mutex_lock(&caller->mm->mm_lock); // bật mutex lên tránh race condition
     pte_set_fpn(caller, pgn + pgit, fpn);
     enlist_pgn_node(&caller->mm->fifo_pgn, pgn + pgit);
-    // pthread_mutex_unlock(&caller->mm->mm_lock);
+    pthread_mutex_unlock(&caller->mm->mm_lock);
     frames_traver = frames_traver->fp_next;
   }
   /* TODO map range of frame to address space
@@ -430,7 +430,7 @@ addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend, addr_t mapst
 {
   struct framephy_struct *frm_lst = NULL;
   addr_t ret_alloc = 0;
-//int pgnum = incpgnum;
+  int pgnum = incpgnum;
 
   /*@bksysnet: author provides a feasible solution of getting frames
    *FATAL logic in here, wrong behaviour if we have not enough page
@@ -439,7 +439,7 @@ addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend, addr_t mapst
    *in endless procedure of swap-off to get frame and we have not provide
    *duplicate control mechanism, keep it simple
    */
-  // ret_alloc = alloc_pages_range(caller, pgnum, &frm_lst);
+  ret_alloc = alloc_pages_range(caller, pgnum, &frm_lst);
 
   if (ret_alloc < 0 && ret_alloc != -3000)
     return -1;
@@ -510,8 +510,8 @@ if ((uintptr_t)mpsrc < (uintptr_t)mpdst) {
  */
 int init_mm(struct mm_struct *mm, struct pcb_t *caller)
 {
-  struct vm_area_struct *vma0 = malloc(sizeof(struct vm_area_struct));
-
+  struct vm_area_struct *vma0 = malloc(sizeof(struct vm_area_struct)); // vùng nhớ stack
+  struct vm_area_struct *vma1 = malloc(sizeof(struct vm_area_struct)); // vùng nhớ heap
   /* TODO init page table directory */
    //mm->pgd = ...
    //mm->p4d = ...
@@ -524,20 +524,27 @@ int init_mm(struct mm_struct *mm, struct pcb_t *caller)
   memset(mm->pgd,0, 512 * sizeof(addr_t));
   /* By default the owner comes with at least one vma */
   vma0->vm_id = 0;  
-  vma0->vm_start = 0;
+  vma0->vm_start = UserSpace_static_start;
   vma0->vm_end = vma0->vm_start;
   vma0->sbrk = vma0->vm_start;
   vma0->vm_freerg_list = NULL; // ban đầu chưa có region nào được cấp phát nên gán null
+  vma1->vm_id = 1;
+  vma1->vm_start = UserSpace_heap_start;
+  vma1->vm_end = vma1->vm_start;
+  vma1->sbrk = vma1->vm_start;
+  vma1->vm_freerg_list = NULL;
   /* TODO init the first free region of vma0 */
   struct vm_rg_struct *first_rg = init_vm_rg(vma0->vm_start, vma0->vm_end);
   enlist_vm_rg_node(&vma0->vm_freerg_list, first_rg);
-
+  struct vm_rg_struct *second_rg = init_vm_rg(vma1->vm_start, vma1->vm_end);
+  enlist_vm_rg_node(&vma1->vm_freerg_list, second_rg);
   /* TODO update VMA0 next */
   // vma0->next = ...
-  vma0->vm_next = NULL; // vùng nhớ tiếp theo chưa có gán null
+  vma0->vm_next = vma1; // heap nối tiếp stack
   /* Point vma owner backward */
-  //vma0->vm_mm = mm; 
+
   vma0->vm_mm = mm; // con trỏ vm_mm trỏ ngược về mm chứa vma0
+  vma1->vm_mm = mm;
   /* TODO: update mmap */
   //mm->mmap = ...
   //mm->symrgtbl = ...
@@ -646,10 +653,6 @@ int print_list_pgn(struct pgn_t *ip)
 
 int print_pgtbl(struct pcb_t *caller, addr_t start, addr_t end)
 {
-//addr_t pgn_start;//, pgn_end;
-//addr_t pgit;
-//struct krnl_t *krnl = caller->krnl;
-
 
   addr_t pgd=0;
   addr_t p4d=0;

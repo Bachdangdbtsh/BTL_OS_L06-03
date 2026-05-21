@@ -30,30 +30,17 @@
  */
 struct vm_area_struct *get_vma_by_num(struct mm_struct *mm, int vmaid)
 {
-  if (mm == NULL) return NULL;
-  struct vm_area_struct *pvma = mm->mmap;
+  if (mm == NULL || mm->mmap == NULL) return NULL;
+	struct vm_area_struct *pvma = mm->mmap;
 
-  if (mm->mmap == NULL)
-    return NULL;
+	while (pvma != NULL) {
+			if (pvma->vm_id == vmaid) {
+					return pvma;
+			}
+			pvma = pvma->vm_next;
+	}
+	return NULL;
 
-  // int vmait = pvma->vm_id;
-
-  // while (vmait < vmaid)
-  // {
-  //   if (pvma == NULL)
-  //     return NULL;
-
-  //   pvma = pvma->vm_next;
-  //   vmait = pvma->vm_id;
-  // }
-  while (pvma != NULL) {
-    if (pvma->vm_id == vmaid) {
-      return pvma;
-    }
-    pvma = pvma->vm_next;    
-  }
-  
-  return pvma;
 }
 
 int __mm_swap_page(struct pcb_t *caller, addr_t vicfpn , addr_t swpfpn)
@@ -74,9 +61,6 @@ struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, ad
 {
   struct vm_rg_struct * newrg;
   /* TODO retrive current vma to obtain newrg, current comment out due to compiler redundant warning*/
-  //struct vm_area_struct *cur_vma = get_vma_by_num(caller->kernl->mm, vmaid);
-
-  //newrg = malloc(sizeof(struct vm_rg_struct));
 
   /* TODO: update the newrg boundary
   // newrg->rg_start = ...
@@ -141,7 +125,6 @@ int validate_overlap_vm_area(struct pcb_t *caller, int vmaid, addr_t vmastart, a
 
   while (vma != NULL)
   {
-    //if (vma != cur_area && OVERLAP(cur_area->vm_start, cur_area->vm_end, vma->vm_start, vma->vm_end))
     if (vma != cur_area && OVERLAP(vmastart, vmaend, vma->vm_start, vma->vm_end))
     {
       return -1;
@@ -161,15 +144,12 @@ int validate_overlap_vm_area(struct pcb_t *caller, int vmaid, addr_t vmastart, a
  */
 int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz)
 {
-  //struct vm_rg_struct * newrg = malloc(sizeof(struct vm_rg_struct));
   struct vm_rg_struct *newrg = malloc(sizeof(struct vm_rg_struct));
 
   /* TOTO with new address scheme, the size need tobe aligned 
    *      the raw inc_sz maybe not fit pagesize
    */ 
-  //addr_t inc_amt;
 
-//  int incnumpage =  inc_amt / PAGING_PAGESZ;
   addr_t inc_amt;
   int incnumpage;
 #ifdef MM64
@@ -180,8 +160,7 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz)
   incnumpage = inc_amt / PAGING_PAGESZ;
 #endif
 
-  //bắt đầu Critical Section
-  pthread_mutex_lock(&caller->mm->mm_lock);
+  // pthread_mutex_lock(&caller->mm->mm_lock);    // UPDATE TO MATCH WITH VMAP_PAGE_RANGE
 
   /* TODO Validate overlap of obtained region */
   //if (validate_overlap_vm_area(caller, vmaid, area->rg_start, area->rg_end) < 0)
@@ -192,40 +171,45 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz)
   // inc_limit_ret...
   /* The obtained vm area (only)
    * now will be alloc real ram region */
+
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
   if (cur_vma == NULL) {
-    pthread_mutex_unlock(&caller->mm->mm_lock);
+    // pthread_mutex_unlock(&caller->mm->mm_lock);  // UPDATE TO MATCH WITH VMAP_PAGE_RANGE
     free(newrg);
     return -1;
   }
 
   addr_t old_end = cur_vma->sbrk;
   addr_t new_end = old_end + inc_amt;
+	addr_t old_vm_end = cur_vma->vm_end; 
+
+	if (vmaid == 1 && new_end > UserSpace_heap_end) {
+			// pthread_mutex_unlock(&caller->mm->mm_lock);  // UPDATE TO MATCH WITH VMAP_PAGE_RANGE
+			free(newrg);
+			return -1;
+	}
 
   if (validate_overlap_vm_area(caller, vmaid, old_end, new_end) < 0) {
-    pthread_mutex_unlock(&caller->mm->mm_lock);
+    // pthread_mutex_unlock(&caller->mm->mm_lock);    // UPDATE TO MATCH WITH VMAP_PAGE_RANGE
     free(newrg);
-    return -1; // lỗi do overlap vùng nhớ
+    return -1; // Loi do overlap vùng nhớ
   }
 
-  addr_t old_vm_end = cur_vma->vm_end; 
+  
   cur_vma->sbrk = new_end;
   if (new_end > cur_vma->vm_end) {
     cur_vma->vm_end = new_end;
   }
 
-//  if (vm_map_ram(caller, area->rg_start, area->rg_end, 
-//                   old_end, incnumpage , newrg) < 0)
-//    return -1; /* Map the memory to MEMRAM */
   if (vm_map_ram(caller, old_end, new_end, old_end, incnumpage, newrg) < 0) {
     cur_vma->sbrk = old_end;
     cur_vma->vm_end = old_vm_end; 
-    pthread_mutex_unlock(&caller->mm->mm_lock);
+    // pthread_mutex_unlock(&caller->mm->mm_lock);  // UPDATE TO MATCH WITH VMAP_PAGE_RANGE
     free(newrg);
     return -1; 
   }
 
-  pthread_mutex_unlock(&caller->mm->mm_lock);
+  // pthread_mutex_unlock(&caller->mm->mm_lock);  // UPDATE TO MATCH WITH VMAP_PAGE_RANGE
   free(newrg);
 
   return 0;

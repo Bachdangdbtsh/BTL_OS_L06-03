@@ -124,49 +124,53 @@ static void * ld_routine(void * args) {
 
 	for (i = 0; i < PAGING64_MAX_PGN; i++)
 	{
-	   os.krnl_pgd[i] = (addr_t)&os.krnl_p4d;
-	   os.krnl_p4d[i] = (addr_t)&os.krnl_pud;
-	   os.krnl_pud[i] = (addr_t)&os.krnl_pmd;
-	   os.krnl_pmd[i] = (addr_t)&os.krnl_pt;
+	   os.krnl_pgd[i] = (addr_t)os.krnl_p4d;
+	   os.krnl_p4d[i] = (addr_t)os.krnl_pud;
+	   os.krnl_pud[i] = (addr_t)os.krnl_pmd;
+	   os.krnl_pmd[i] = (addr_t)os.krnl_pt;
 	   os.krnl_pt[i] = 0;
 	}
 #else
 	os.krnl_pgd = malloc(PAGING_MAX_PGN * sizeof(uint32_t));
 #endif
+#ifdef MM_PAGING
+	/*  init kernel memory management */
 	i=0;
+	os.mm = malloc(sizeof(struct mm_struct));
+	init_mm(os.mm, NULL);
+	os.mram = mram;
+	os.mswp = mswp;
+	os.active_mswp = active_mswp;
+#endif
 	printf("ld_routine\n");
 	while (i < num_processes) {
 		struct pcb_t * proc = load(ld_processes.path[i]);
 		struct krnl_t * krnl = proc->krnl = &os;	
 
 #ifdef MLQ_SCHED
-		proc->priority = ld_processes.prio[i];
+	proc->priority = ld_processes.prio[i];
 #endif
-		while (current_time() < ld_processes.start_time[i]) {
-			next_slot(timer_id);
-		}
+	while (current_time() < ld_processes.start_time[i]) {
+		next_slot(timer_id);
+	}
 #ifdef MM_PAGING
 	/* 
 		code ban đầu của thầy, gây memory leak mỗi lần ghi đè mm
 		krnl->mm = malloc(sizeof(struct mm_struct));
 		init_mm(krnl->mm, proc);
 	*/
-		proc->mm = malloc(sizeof(struct mm_struct));
-		init_mm(proc->mm, proc);
-		proc->mram = mram;
-		proc->mswp = mswp;
-		proc->active_mswp = active_mswp;
-		krnl->mm =proc->mm; // trỏ vào mm của process cuối cùng được load
-		krnl->mram = mram;
-		krnl->mswp = mswp;
-		krnl->active_mswp = active_mswp;
+	proc->mm = malloc(sizeof(struct mm_struct));
+	init_mm(proc->mm, proc);
+	proc->mram = mram;
+	proc->mswp = mswp;
+	proc->active_mswp = active_mswp;
 #endif
-		printf("\tLoaded a process at %s, PID: %d PRIO: %ld\n",
-			ld_processes.path[i], proc->pid, ld_processes.prio[i]);
-		add_proc(proc);
-		free(ld_processes.path[i]);
-		i++;
-		next_slot(timer_id);
+	printf("\tLoaded a process at %s, PID: %d PRIO: %ld\n",
+		ld_processes.path[i], proc->pid, ld_processes.prio[i]);
+	add_proc(proc);
+	free(ld_processes.path[i]);
+	i++;
+	next_slot(timer_id);
 	}
 	free(ld_processes.path);
 	free(ld_processes.start_time);
