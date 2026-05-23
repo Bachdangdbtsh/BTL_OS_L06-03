@@ -37,12 +37,10 @@ int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
    /* TODO: Traverse proclist to terminate the proc
     *       stcmp to check the process match proc_name
     */
-    //	struct queue_t *running_list = krnl->running_list;
 
     /* TODO Maching
      and marking the process */
     /* user process are not allowed to access directly pcb in kernel space of syscall */
-    //....
     
     // To tranverse properly, we base on struct queue_t *running_list and its priority level
     struct queue_t *running_list = krnl->running_list;

@@ -63,8 +63,6 @@ struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, ad
   /* TODO retrive current vma to obtain newrg, current comment out due to compiler redundant warning*/
 
   /* TODO: update the newrg boundary
-  // newrg->rg_start = ...
-  // newrg->rg_end = ...
   */
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
   if (cur_vma == NULL) {
@@ -163,15 +161,6 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz)
   // pthread_mutex_lock(&caller->mm->mm_lock);    // UPDATE TO MATCH WITH VMAP_PAGE_RANGE
 
   /* TODO Validate overlap of obtained region */
-  //if (validate_overlap_vm_area(caller, vmaid, area->rg_start, area->rg_end) < 0)
-  //  return -1; /*Overlap and failed allocation */
-
-  /* TODO: Obtain the new vm area based on vmaid */
-  //cur_vma->vm_end... 
-  // inc_limit_ret...
-  /* The obtained vm area (only)
-   * now will be alloc real ram region */
-
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
   if (cur_vma == NULL) {
     // pthread_mutex_unlock(&caller->mm->mm_lock);  // UPDATE TO MATCH WITH VMAP_PAGE_RANGE

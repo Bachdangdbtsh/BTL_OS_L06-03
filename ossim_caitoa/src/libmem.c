@@ -53,7 +53,7 @@ int validate_address_zone(addr_t addr) {
       return 0;
     }
 
-    // 2. check in vma-1: Heap [0x0000000100000000 - 0x00FFFFFFFFFFFFFF]
+    // check in vma-1: Heap [0x0000000100000000 - 0x00FFFFFFFFFFFFFF]
     if (addr >= UserSpace_heap_start && addr <= UserSpace_heap_end) {
       return 1;
     }
@@ -305,7 +305,7 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
 
     addr_t tgtfpn; // target RAM frame
 
-    // 2. Ask for free RAM first
+    // Ask for free RAM first
     addr_t free_fpn;
     pthread_mutex_lock(&real_pcb->krnl->mram->memphy_lock);
     int ram_ret = MEMPHY_get_freefp(real_pcb->krnl->mram, &free_fpn);
@@ -350,7 +350,7 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
         tgtfpn = vicfpn;
     }
 
-    // 3. Load page from Swap to RAM (if page has already been pushed back to SWAP)
+    // Load page from Swap to RAM (if page has already been pushed back to SWAP)
     // Kiểm tra bit PAGING_PTE_SWAPPED_MASK (bit 30)
     if (pte & PAGING_PTE_SWAPPED_MASK) {
         addr_t tgtswpfpn = PAGING_SWP(pte);
@@ -362,7 +362,7 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
         pthread_mutex_unlock(&real_pcb->krnl->active_mswp->memphy_lock);
     }
 
-    /* 4. Update Page Table for swapped page và and push to FIFO */
+    /* Update Page Table for swapped page và and push to FIFO */
     pte_set_fpn(real_pcb, pgn, tgtfpn);
     enlist_pgn_node(&real_pcb->mm->fifo_pgn, pgn);
 
@@ -779,9 +779,6 @@ int libkmem_cache_pool_create(struct pcb_t *caller, uint32_t size, uint32_t alig
   mm->kcpooltbl   = new_pool;
   pthread_mutex_unlock(&mmvm_lock);
 
-  //struct krnl_t *krnl = caller->krnl;
-  //krnl->kcpooltbl...
-  //krnl->krnl_pgd ...
   return 0;
 }
 
@@ -890,10 +887,6 @@ addr_t __kmem_cache_alloc(struct pcb_t *caller, int vmaid, int rgid, int cache_p
   mm->symrgtbl[rgid].rg_end   = old_sbrk + slot_sz;
   *alloc_addr = old_sbrk;
 
-  //krnl->symrgtbl...
-  //krnl->kcpooltbl...
-  //krnl->krnl_pgd ...
-
   return 0;
 
 }
@@ -969,8 +962,6 @@ int libkmem_copy_to_user(struct pcb_t *caller, uint32_t source, uint32_t destina
   }
 
   return 0;
-  //__read_kernel_mem(...)
-  //__write_user_mem(...);
 }
 
 
