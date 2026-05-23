@@ -58,7 +58,7 @@ int init_pte(addr_t *pte,
   return 0;
 }
 
-
+// static helper function to tranverse tables
 static addr_t* get_or_create_new_table (addr_t* parent_table, int index) {
   if (parent_table[index] == 0 ) { // nếu cần truy cập vào bảng con mà chưa có
     addr_t* new_table = (addr_t*) malloc(512 * sizeof(addr_t));
@@ -130,9 +130,7 @@ int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff)
   /* Get value from the system */
   /* TODO Perform multi-level page mapping */
   get_pd_from_pagenum(pgn, &pgd, &p4d, &pud, &pmd, &pt);
-  //... krnl->mm->pgd
-  //... krnl->mm->pt
-  //pte = &krnl->mm->pt;
+
   if (caller != NULL && caller->mm != NULL ) {
     addr_t* p4d_table = get_or_create_new_table(caller->mm->pgd,pgd);
     addr_t* pud_table = get_or_create_new_table(p4d_table, p4d);
@@ -168,7 +166,6 @@ int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff)
  */
 int pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn)
 {
-//struct krnl_t *krnl = caller->krnl;
 
   addr_t *pte;
   addr_t pgd=0;
@@ -181,9 +178,7 @@ int pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn)
   /* Get value from the system */
   /* TODO Perform multi-level page mapping */
   get_pd_from_pagenum(pgn, &pgd, &p4d, &pud, &pmd, &pt);
-  //... krnl->mm->pgd
-  //... krnl->mm->pt
-  //pte = &krnl->mm->pt;
+  
   // nhớ bật MM_PAGING
   if (caller !=NULL && caller->mm !=NULL) {
     addr_t* p4d_table = get_or_create_new_table(caller->mm->pgd,pgd);
@@ -226,9 +221,7 @@ uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn)
 	
   /* TODO Perform multi-level page mapping */
   get_pd_from_pagenum(pgn, &pgd, &p4d, &pud, &pmd, &pt);
-  //... krnl->mm->pgd
-  //... krnl->mm->pt
-  //pte = &krnl->mm->pt;	
+
   // nhớ bật MM_PAGING khi chạy hàm
 	if (caller != NULL && caller->mm !=NULL && caller->mm->pgd != NULL) {
     if(caller->mm->pgd[pgd] == 0) return 0; // nếu bảng con chưa được tạo thì trả về 0
@@ -250,10 +243,7 @@ uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn)
  * @ret    : page table entry
  **/
 int pte_set_entry(struct pcb_t *caller, addr_t pgn, uint32_t pte_val)
-{ /*
-	struct krnl_t *krnl = caller->krnl;
-	krnl->mm->pgd[pgn]=pte_val;
-	*/
+{ 
   addr_t pgd=0, p4d=0, pud=0, pmd=0, pt=0;
   get_pd_from_pagenum(pgn, &pgd, &p4d, &pud, &pmd, &pt);
   if (caller != NULL && caller->mm !=NULL) {
@@ -275,8 +265,7 @@ int vmap_pgd_memset(struct pcb_t *caller,           // process call
                     addr_t addr,                       // start address which is aligned to pagesz
                     int pgnum)                      // num of mapping page
 {
-  //int pgit = 0;
-  //uint64_t pattern = 0xdeadbeef;
+  
   uint32_t pattern = 0xdeadbeef; // khởi tạo pattern ban đầu
   addr_t pgn = addr >> PAGING64_ADDR_PT_SHIFT; // lấy số trang page number của địa chỉ bắt đầu
   /* TODO memset the page table with given pattern
@@ -298,18 +287,11 @@ addr_t vmap_page_range(struct pcb_t *caller,           // process call
                     struct framephy_struct *frames, // list of the mapped frames
                     struct vm_rg_struct *ret_rg)    // return mapped region, the real mapped fp
 {                                                   // no guarantee all given pages are mapped
-//struct framephy_struct *fpit;
-//int pgit = 0;
-//addr_t pgn;
+
  if (frames == NULL) return -1; //  không xin được frames nào ban đầu để ánh xạ
  struct framephy_struct* frames_traver = frames; // con trỏ để duyệt dslk các frame
  addr_t pgn = addr >> PAGING64_ADDR_PT_SHIFT; // dịch phải 12 bit offset lấy page number
-  /* TODO: update the rg_end and rg_start of ret_rg 
-  //ret_rg->rg_end =  ....
-  //ret_rg->rg_start = ...
-  //ret_rg->vmaid = ...
-  */
-
+  
   // thiết lập vùng nhớ ảo được ánh xạ sang các frame
   if(ret_rg !=NULL) {
   ret_rg->rg_start = addr;
@@ -327,12 +309,6 @@ addr_t vmap_page_range(struct pcb_t *caller,           // process call
     pthread_mutex_unlock(&caller->mm->mm_lock);
     frames_traver = frames_traver->fp_next;
   }
-  /* TODO map range of frame to address space
-   *      [addr to addr + pgnum*PAGING_PAGESZ
-   *      in page table caller->krnl->mm->pgd,
-   *                    caller->krnl->mm->pud...
-   *                    ...
-   */
 
   /* Tracking for later page replacement activities (if needed)
    * Enqueue new usage page */
@@ -350,29 +326,10 @@ addr_t vmap_page_range(struct pcb_t *caller,           // process call
 
 addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struct **frm_lst)
 {
-  //addr_t fpn;
-  //int pgit;
-  //struct framephy_struct *newfp_str = NULL;
+
   addr_t fpn =0; // khởi tạo số hiệu frame ban đầu
   struct framephy_struct *newfp_str = NULL, *tail = NULL; // khởi tạo frame ban đầu
-  /* TODO: allocate the page 
-  //caller-> ...
-  //frm_lst-> ...
-  */
-/*
-  for (pgit = 0; pgit < req_pgnum; pgit++)
-  {
-    // TODO: allocate the page 
-    if (MEMPHY_get_freefp(caller->mram, &fpn) == 0)
-    {
-      newfp_str->fpn = fpn;
-    }
-    else
-    { // TODO: ERROR CODE of obtaining somes but not enough frames
-    }
-  }
-*/
-  
+    
   for (int pgit = 0; pgit < req_pgnum; pgit++)
   {
     // TODO: allocate the page 
@@ -469,18 +426,6 @@ int __swap_cp_page(struct memphy_struct *mpsrc, addr_t srcfpn,
   int cellidx;
   addr_t addrsrc, addrdst;
 
-  /* Bật khóa bảo vệ cho cả thiết bị nguồn và thiết bị đích, sửa đổi
-   */ 
-  if ((uintptr_t)mpsrc < (uintptr_t)mpdst) {
-    pthread_mutex_lock(&mpsrc->memphy_lock);
-    pthread_mutex_lock(&mpdst->memphy_lock);
-} else if ((uintptr_t)mpsrc > (uintptr_t)mpdst) {
-    pthread_mutex_lock(&mpdst->memphy_lock);
-    pthread_mutex_lock(&mpsrc->memphy_lock);
-} else {
-    /* Nếu nguồn và đích giống nhau (tự copy), chỉ khóa 1 lần */
-    pthread_mutex_lock(&mpsrc->memphy_lock);
-}
   for (cellidx = 0; cellidx < PAGING64_PAGESZ; cellidx++) // ban đầu là PAGING_PAGEZ là 32 bit
   {
     addrsrc = srcfpn * PAGING64_PAGESZ + cellidx;
@@ -490,16 +435,6 @@ int __swap_cp_page(struct memphy_struct *mpsrc, addr_t srcfpn,
     MEMPHY_read(mpsrc, addrsrc, &data);
     MEMPHY_write(mpdst, addrdst, data);
   }
- /* Mở khóa theo thứ tự ngược lại */
-if ((uintptr_t)mpsrc < (uintptr_t)mpdst) {
-    pthread_mutex_unlock(&mpdst->memphy_lock);
-    pthread_mutex_unlock(&mpsrc->memphy_lock);
-} else if ((uintptr_t)mpsrc > (uintptr_t)mpdst) {
-    pthread_mutex_unlock(&mpsrc->memphy_lock);
-    pthread_mutex_unlock(&mpdst->memphy_lock);
-} else {
-    pthread_mutex_unlock(&mpsrc->memphy_lock);
-}
   return 0;
 }
 
@@ -512,12 +447,6 @@ int init_mm(struct mm_struct *mm, struct pcb_t *caller)
 {
   struct vm_area_struct *vma0 = malloc(sizeof(struct vm_area_struct)); // vùng nhớ stack
   struct vm_area_struct *vma1 = malloc(sizeof(struct vm_area_struct)); // vùng nhớ heap
-  /* TODO init page table directory */
-   //mm->pgd = ...
-   //mm->p4d = ...
-   //mm->pud = ...
-   //mm->pmd = ...
-   //mm->pt = ...
 
   /* khởi tạo bắt đầu các cấp page directory, nhớ bật MM_PAGING khi chạy hàm này */
   mm->pgd = malloc(512 * sizeof(addr_t));
@@ -538,17 +467,12 @@ int init_mm(struct mm_struct *mm, struct pcb_t *caller)
   enlist_vm_rg_node(&vma0->vm_freerg_list, first_rg);
   struct vm_rg_struct *second_rg = init_vm_rg(vma1->vm_start, vma1->vm_end);
   enlist_vm_rg_node(&vma1->vm_freerg_list, second_rg);
-  /* TODO update VMA0 next */
-  // vma0->next = ...
+
   vma0->vm_next = vma1; // heap nối tiếp stack
   /* Point vma owner backward */
 
   vma0->vm_mm = mm; // con trỏ vm_mm trỏ ngược về mm chứa vma0
   vma1->vm_mm = mm;
-  /* TODO: update mmap */
-  //mm->mmap = ...
-  //mm->symrgtbl = ...
-  //mm->kcpooltbl
   
   mm->mmap = vma0; // khởi tạo đầu danh sách vùng nhớ là vma0
   memset(mm->symrgtbl, 0, sizeof(mm->symrgtbl));
