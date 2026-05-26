@@ -71,17 +71,32 @@ static pthread_mutex_t mmvm_lock = PTHREAD_MUTEX_INITIALIZER;
  */
 int enlist_vm_freerg_list(struct mm_struct *mm, struct vm_rg_struct *rg_elmt)
 {
-  struct vm_rg_struct *rg_node = mm->mmap->vm_freerg_list;
-
-  if (rg_elmt->rg_start >= rg_elmt->rg_end)
+  if (mm == NULL || rg_elmt == NULL || rg_elmt->rg_start >= rg_elmt->rg_end) {
     return -1;
+  }
 
-  if (rg_node != NULL)
+  struct vm_area_struct *cur_vma = mm->mmap;
+
+  // Check where cur_vma is: Check if cur_vma->vm_start is within vma-0 or vma-1
+  while (cur_vma != NULL) {
+    if (rg_elmt->rg_start >= cur_vma->vm_start && rg_elmt->rg_start < cur_vma->vm_end) {
+      break; /* found */
+    }
+    cur_vma = cur_vma->vm_next;
+  }
+
+  /* Default case: incompatible address, back to mm->mmap*/
+  if (cur_vma == NULL) {
+    cur_vma = mm->mmap;
+  }
+  if (cur_vma == NULL) return -1;
+
+  /* add cur_vma into vm_freerg_list of this vma */
+  struct vm_rg_struct *rg_node = cur_vma->vm_freerg_list;
+  if (rg_node != NULL) {
     rg_elmt->rg_next = rg_node;
-
-  /* Enlist the new region */
-  mm->mmap->vm_freerg_list = rg_elmt;
-
+  }
+  cur_vma->vm_freerg_list = rg_elmt;
   return 0;
 }
 
@@ -157,7 +172,7 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
   inc_sz = PAGING_PAGE_ALIGNSZ(size);
 #endif
 
-  int old_sbrk = cur_vma->sbrk;
+  addr_t old_sbrk = cur_vma->sbrk;
 
   struct sc_regs regs;
   regs.a1 = SYSMEM_INC_OP;
@@ -390,8 +405,11 @@ int pg_getval(struct mm_struct *mm, int addr, BYTE *data, struct pcb_t *caller)
     return -1; /* invalid page access */
 
   // calculate physical addr
-  int phyaddr = (fpn << PAGING_ADDR_FPN_LOBIT) + off;
-
+#ifdef MM64
+  addr_t phyaddr = (fpn * PAGING64_PAGESZ) + off;
+#else
+  addr_t phyaddr = (fpn << PAGING_ADDR_FPN_LOBIT) + off;
+#endif
   /* TODO 
    *  MEMPHY_read(caller->krnl->mram, phyaddr, data);
    *  MEMPHY READ 
@@ -425,7 +443,11 @@ int pg_setval(struct mm_struct *mm, int addr, BYTE value, struct pcb_t *caller)
   if (pg_getpage(mm, pgn, &fpn, caller) != 0)
     return -1; /* invalid page access */
 
-  int phyaddr = (fpn << PAGING_ADDR_FPN_LOBIT) + off;
+#ifdef MM64
+  addr_t phyaddr = (fpn * PAGING64_PAGESZ) + off;
+#else
+  addr_t phyaddr = (fpn << PAGING_ADDR_FPN_LOBIT) + off;
+#endif
   /* TODO 
    *  MEMPHY_write(caller->krnl->mram, phyaddr, value);
    *  MEMPHY WRITE with SYSMEM_IO_WRITE 
@@ -650,7 +672,7 @@ addr_t __kmalloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t 
   }
   // if cannot find in vm_area, widen sbrk
   else {
-    int old_sbrk = cur_vma->sbrk;
+    addr_t old_sbrk = cur_vma->sbrk;
     cur_vma->sbrk += size;
     if (cur_vma->sbrk > cur_vma->vm_end) {
       cur_vma->vm_end = cur_vma->sbrk;
@@ -844,12 +866,12 @@ addr_t __kmem_cache_alloc(struct pcb_t *caller, int vmaid, int rgid, int cache_p
   }
   if (new_pool == NULL) return -1;
   // since we have known new_pool, we can know the size needed for allocation in kernel
-  addr_t slot_sz = (addr_t) new_pool->size;
+  addr_t slot_sz = (addr_t) new_pool->align;
 
 #ifdef MM64
-  if (new_pool->align > 0) {
-    slot_sz = ((slot_sz + new_pool->align - 1) / new_pool->align) * new_pool->align;
-  }
+  // if (new_pool->align > 0) {
+  //   slot_sz = ((slot_sz + new_pool->align - 1) / new_pool->align) * new_pool->align;
+  // }
 #else
   slot_sz = PAGING_PAGE_ALIGNSZ(slot_sz);
 #endif
@@ -1005,7 +1027,11 @@ int __read_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, 
 
   // Extract Physical Frame
   addr_t fpn = PAGING_FPN(pte);
+#ifdef MM64
+  addr_t phyaddr = (fpn * PAGING64_PAGESZ) + page_off;
+#else
   addr_t phyaddr = (fpn << PAGING_ADDR_FPN_LOBIT) + page_off;
+#endif
 
   MEMPHY_read(krnl->mram, phyaddr, data);
   return 0;
@@ -1049,8 +1075,11 @@ int __write_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
   }
   
   addr_t fpn = PAGING_FPN(pte);
+#ifdef MM64
+  addr_t physical_addr = (fpn * PAGING64_PAGESZ) + off;
+#else
   addr_t physical_addr = (fpn << PAGING_ADDR_FPN_LOBIT) + off;
-
+#endif
   
   MEMPHY_write(krnl->mram, physical_addr, value);
   return 0;

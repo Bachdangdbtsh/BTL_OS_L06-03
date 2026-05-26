@@ -92,14 +92,14 @@ struct kcache_pool_struct {
    int size;
    int align;
    // add *next to become linked list
-   
+   struct kcache_pool_struct *next;
 
 #ifdef MM64
    addr_t storage;
 #else
    uint32_t storage;
 #endif
-   struct kcache_pool_struct *next;
+   
 };
 
 
