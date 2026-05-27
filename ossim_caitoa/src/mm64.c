@@ -149,7 +149,6 @@ int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff)
   }
 #endif
 	
-  SETBIT(*pte, PAGING_PTE_PRESENT_MASK); // check lại vấn đề bit 30 và 31 có cùng =1 được không
   CLRBIT(*pte, PAGING_PTE_PRESENT_MASK); // thay đổi bit 31 về 0
   SETBIT(*pte, PAGING_PTE_SWAPPED_MASK);
 
@@ -385,10 +384,13 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_st
  */
 addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend, addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg)
 {
+  if (caller == NULL || caller->mm == NULL) return -1;
   struct framephy_struct *frm_lst = NULL;
   addr_t ret_alloc = 0;
   int pgnum = incpgnum;
-
+  if (ret_rg == NULL) return -1;
+  ret_rg->rg_start = mapstart;
+  ret_rg->rg_end = mapstart + incpgnum * PAGING64_PAGESZ;
   /*@bksysnet: author provides a feasible solution of getting frames
    *FATAL logic in here, wrong behaviour if we have not enough page
    *i.e. we request 1000 frames meanwhile our RAM has size of 3 frames
@@ -396,24 +398,23 @@ addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend, addr_t mapst
    *in endless procedure of swap-off to get frame and we have not provide
    *duplicate control mechanism, keep it simple
    */
-  ret_alloc = alloc_pages_range(caller, pgnum, &frm_lst);
+  addr_t pgn = mapstart >> PAGING64_ADDR_PT_SHIFT;
 
-  if (ret_alloc < 0 && ret_alloc != -3000)
-    return -1;
-
-  /* Out of memory */
-  if (ret_alloc == -3000)
-  {
-    return -1;
+  for (int pgit = 0; pgit < incpgnum; pgit++) {
+    pthread_mutex_lock(&caller->mm->mm_lock);
+    
+    // Sử dụng pte_set_entry để tự động kích hoạt get_or_create_new_table cấp phát thưa
+    // Đặt giá trị bằng 0 (Nghĩa là trang hợp lệ nhưng PRESENT = 0, chưa có RAM vật lý)
+    pte_set_entry(caller, pgn + pgit, 0); 
+    
+    pthread_mutex_unlock(&caller->mm->mm_lock);
   }
 
   /* it leaves the case of memory is enough but half in ram, half in swap
    * do the swaping all to swapper to get the all in ram */
-   vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg);
 
   return 0;
 }
-
 /* Swap copy content page from source frame to destination frame
  * @mpsrc  : source memphy
  * @srcfpn : source physical page number (FPN)
